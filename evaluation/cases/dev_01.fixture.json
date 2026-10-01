@@ -1,0 +1,62 @@
+{
+  "architecture": {
+    "system_name": "dev_01",
+    "components": [
+      {
+        "id": "controller",
+        "name": "Kontrol Birimi",
+        "category": "component",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: Kontrol Birimi, Sıcaklık Sensöründen ölçümleri RS-422 üzerinden okuyacaktır."
+          }
+        ]
+      },
+      {
+        "id": "sensor",
+        "name": "Sıcaklık Sensörü",
+        "category": "component",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: Kontrol Birimi, Sıcaklık Sensöründen ölçümleri RS-422 üzerinden okuyacaktır."
+          }
+        ]
+      }
+    ],
+    "connections": [
+      {
+        "id": "if_001",
+        "source": "sensor",
+        "target": "controller",
+        "type": "data",
+        "protocol": "RS-422",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: Kontrol Birimi, Sıcaklık Sensöründen ölçümleri RS-422 üzerinden okuyacaktır."
+          }
+        ]
+      }
+    ],
+    "requirement_coverage": [
+      {
+        "requirement_id": "G-01",
+        "status": "covered",
+        "related_component_ids": [
+          "controller",
+          "sensor"
+        ],
+        "related_connection_ids": [
+          "if_001"
+        ]
+      }
+    ]
+  },
+  "analysis": {
+    "findings": [],
+    "missing_information": [],
+    "open_questions": []
+  }
+}

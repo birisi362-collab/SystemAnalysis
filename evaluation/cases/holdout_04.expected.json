@@ -1,0 +1,37 @@
+{
+  "case_id": "holdout_04",
+  "split": "holdout",
+  "reference_status": "draft_reference_requires_engineer_review",
+  "components": [
+    {
+      "id": "logger",
+      "name": "Logger",
+      "aliases": []
+    },
+    {
+      "id": "sensor",
+      "name": "Sensor",
+      "aliases": []
+    },
+    {
+      "id": "server",
+      "name": "Server",
+      "aliases": []
+    }
+  ],
+  "connections": [
+    {
+      "source": "sensor",
+      "target": "logger",
+      "type": "data",
+      "protocol": "SPI"
+    },
+    {
+      "source": "logger",
+      "target": "server",
+      "type": "data",
+      "protocol": "Ethernet"
+    }
+  ],
+  "finding_rubric": []
+}

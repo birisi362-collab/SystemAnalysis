@@ -1,0 +1,1 @@
+G-01: Güç Birimi, İşlemciye 24V DC güç sağlayacaktır.

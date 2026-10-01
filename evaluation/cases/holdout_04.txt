@@ -1,0 +1,2 @@
+G-01: Logger shall receive data from Sensor over SPI.
+G-02: Logger shall send data to Server over Ethernet.

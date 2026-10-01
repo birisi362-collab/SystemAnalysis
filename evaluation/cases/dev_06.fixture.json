@@ -1,0 +1,48 @@
+{
+  "architecture": {
+    "system_name": "dev_06",
+    "components": [
+      {
+        "id": "a",
+        "name": "A Birimi",
+        "category": "component",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: Sistem A Birimi ve B Birimini içerecektir. Bu dokümanda aralarında bağlantı tanımlanmamıştır."
+          }
+        ]
+      },
+      {
+        "id": "b",
+        "name": "B Birimi",
+        "category": "component",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: Sistem A Birimi ve B Birimini içerecektir. Bu dokümanda aralarında bağlantı tanımlanmamıştır."
+          }
+        ]
+      }
+    ],
+    "connections": [],
+    "requirement_coverage": [
+      {
+        "requirement_id": "G-01",
+        "status": "covered",
+        "related_component_ids": [
+          "a",
+          "b"
+        ],
+        "related_connection_ids": []
+      }
+    ]
+  },
+  "analysis": {
+    "findings": [],
+    "missing_information": [],
+    "open_questions": [
+      "Bağlantı yokluğunu kesin tasarım hatası diye sunma."
+    ]
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "description": "Free development candidate checked 2026-09-30; V4.1 Flash, not the deprecated V4 free endpoint.",
+  "base_url": "https://integrate.api.nvidia.com/v1",
+  "model": "deepseek-ai/deepseek-v4.1-flash",
+  "api_key_env": "NVIDIA_API_KEY",
+  "json_mode": false,
+  "timeout": 180,
+  "max_tokens": 8192,
+  "max_retries": 1
+}

@@ -1,0 +1,62 @@
+{
+  "architecture": {
+    "system_name": "dev_11",
+    "components": [
+      {
+        "id": "controller",
+        "name": "Controller",
+        "category": "component",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: Controller shall transmit data to External Station over Ethernet. External Station is outside the system boundary."
+          }
+        ]
+      },
+      {
+        "id": "station",
+        "name": "External Station",
+        "category": "external",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: Controller shall transmit data to External Station over Ethernet. External Station is outside the system boundary."
+          }
+        ]
+      }
+    ],
+    "connections": [
+      {
+        "id": "if_001",
+        "source": "controller",
+        "target": "station",
+        "type": "data",
+        "protocol": "Ethernet",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: Controller shall transmit data to External Station over Ethernet. External Station is outside the system boundary."
+          }
+        ]
+      }
+    ],
+    "requirement_coverage": [
+      {
+        "requirement_id": "G-01",
+        "status": "covered",
+        "related_component_ids": [
+          "controller",
+          "station"
+        ],
+        "related_connection_ids": [
+          "if_001"
+        ]
+      }
+    ]
+  },
+  "analysis": {
+    "findings": [],
+    "missing_information": [],
+    "open_questions": []
+  }
+}

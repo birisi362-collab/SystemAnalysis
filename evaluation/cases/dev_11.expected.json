@@ -1,0 +1,26 @@
+{
+  "case_id": "dev_11",
+  "split": "dev",
+  "reference_status": "draft_reference_requires_engineer_review",
+  "components": [
+    {
+      "id": "controller",
+      "name": "Controller",
+      "aliases": []
+    },
+    {
+      "id": "station",
+      "name": "External Station",
+      "aliases": []
+    }
+  ],
+  "connections": [
+    {
+      "source": "controller",
+      "target": "station",
+      "type": "data",
+      "protocol": "Ethernet"
+    }
+  ],
+  "finding_rubric": []
+}

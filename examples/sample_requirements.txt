@@ -1,0 +1,20 @@
+SYSTEM: Integrated Mission Management System
+
+3.1 The system shall consist of a Mission Computer, Radar Unit,
+Communication Unit and Power Supply Unit.
+
+3.2 The Radar Unit shall provide target detection information to the
+Mission Computer.
+
+3.3 The Mission Computer shall process target information and send
+mission data to the Communication Unit.
+
+3.4 The Power Supply Unit shall provide electrical power to the Radar Unit,
+Mission Computer and Communication Unit.
+
+3.5 The Communication Unit shall exchange mission data with an external
+Command and Control System.
+
+3.6 The Radar Unit shall communicate with the Mission Computer over Ethernet.
+The interface protocol between the Mission Computer and Communication Unit
+is to be defined by the detailed interface specification.

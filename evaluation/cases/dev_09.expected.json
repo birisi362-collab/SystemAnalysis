@@ -1,0 +1,26 @@
+{
+  "case_id": "dev_09",
+  "split": "dev",
+  "reference_status": "draft_reference_requires_engineer_review",
+  "components": [
+    {
+      "id": "sensor",
+      "name": "Sensör",
+      "aliases": []
+    },
+    {
+      "id": "cpu",
+      "name": "İşlemci",
+      "aliases": []
+    }
+  ],
+  "connections": [
+    {
+      "source": "sensor",
+      "target": "cpu",
+      "type": "data",
+      "protocol": "I2C"
+    }
+  ],
+  "finding_rubric": []
+}

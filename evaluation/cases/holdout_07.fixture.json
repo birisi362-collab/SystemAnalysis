@@ -1,0 +1,62 @@
+{
+  "architecture": {
+    "system_name": "holdout_07",
+    "components": [
+      {
+        "id": "display",
+        "name": "Display",
+        "category": "component",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: Display shall receive image data from Camera over USB."
+          }
+        ]
+      },
+      {
+        "id": "camera",
+        "name": "Camera",
+        "category": "component",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: Display shall receive image data from Camera over USB."
+          }
+        ]
+      }
+    ],
+    "connections": [
+      {
+        "id": "if_001",
+        "source": "camera",
+        "target": "display",
+        "type": "data",
+        "protocol": "USB",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: Display shall receive image data from Camera over USB."
+          }
+        ]
+      }
+    ],
+    "requirement_coverage": [
+      {
+        "requirement_id": "G-01",
+        "status": "covered",
+        "related_component_ids": [
+          "display",
+          "camera"
+        ],
+        "related_connection_ids": [
+          "if_001"
+        ]
+      }
+    ]
+  },
+  "analysis": {
+    "findings": [],
+    "missing_information": [],
+    "open_questions": []
+  }
+}

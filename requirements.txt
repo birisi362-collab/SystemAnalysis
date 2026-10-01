@@ -1,0 +1,2 @@
+# Full development dependencies for the architecture workbench.
+-r requirements-workbench.txt

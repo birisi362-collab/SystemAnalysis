@@ -1,0 +1,30 @@
+{
+  "case_id": "dev_01",
+  "split": "dev",
+  "reference_status": "draft_reference_requires_engineer_review",
+  "components": [
+    {
+      "id": "controller",
+      "name": "Kontrol Birimi",
+      "aliases": [
+        "Control Unit"
+      ]
+    },
+    {
+      "id": "sensor",
+      "name": "Sıcaklık Sensörü",
+      "aliases": [
+        "Temperature Sensor"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "source": "sensor",
+      "target": "controller",
+      "type": "data",
+      "protocol": "RS-422"
+    }
+  ],
+  "finding_rubric": []
+}

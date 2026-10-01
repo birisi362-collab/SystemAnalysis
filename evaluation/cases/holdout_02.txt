@@ -1,0 +1,1 @@
+G-01: Motor Sürücü, Kontrolcüden gelen komutları CAN üzerinden alacaktır.

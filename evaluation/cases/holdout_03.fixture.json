@@ -1,0 +1,111 @@
+{
+  "architecture": {
+    "system_name": "holdout_03",
+    "components": [
+      {
+        "id": "pdu",
+        "name": "Power Supply",
+        "category": "component",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: Power Supply shall supply power to CPU."
+          },
+          {
+            "requirement_id": "G-02",
+            "quote": "G-02: Power Supply shall supply power to Camera."
+          }
+        ]
+      },
+      {
+        "id": "cpu",
+        "name": "CPU",
+        "category": "component",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: Power Supply shall supply power to CPU."
+          },
+          {
+            "requirement_id": "G-02",
+            "quote": "G-02: Power Supply shall supply power to Camera."
+          }
+        ]
+      },
+      {
+        "id": "camera",
+        "name": "Camera",
+        "category": "component",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: Power Supply shall supply power to CPU."
+          },
+          {
+            "requirement_id": "G-02",
+            "quote": "G-02: Power Supply shall supply power to Camera."
+          }
+        ]
+      }
+    ],
+    "connections": [
+      {
+        "id": "if_001",
+        "source": "pdu",
+        "target": "cpu",
+        "type": "power",
+        "protocol": null,
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: Power Supply shall supply power to CPU."
+          }
+        ]
+      },
+      {
+        "id": "if_002",
+        "source": "pdu",
+        "target": "camera",
+        "type": "power",
+        "protocol": null,
+        "evidence": [
+          {
+            "requirement_id": "G-02",
+            "quote": "G-02: Power Supply shall supply power to Camera."
+          }
+        ]
+      }
+    ],
+    "requirement_coverage": [
+      {
+        "requirement_id": "G-01",
+        "status": "covered",
+        "related_component_ids": [
+          "pdu",
+          "cpu",
+          "camera"
+        ],
+        "related_connection_ids": [
+          "if_001"
+        ]
+      },
+      {
+        "requirement_id": "G-02",
+        "status": "covered",
+        "related_component_ids": [
+          "pdu",
+          "cpu",
+          "camera"
+        ],
+        "related_connection_ids": [
+          "if_002"
+        ]
+      }
+    ]
+  },
+  "analysis": {
+    "findings": [],
+    "missing_information": [],
+    "open_questions": []
+  }
+}

@@ -1,0 +1,1 @@
+G-01: Controller shall transmit data to External Station over Ethernet. External Station is outside the system boundary.

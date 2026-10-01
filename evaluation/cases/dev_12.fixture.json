@@ -1,0 +1,62 @@
+{
+  "architecture": {
+    "system_name": "dev_12",
+    "components": [
+      {
+        "id": "a",
+        "name": "A Birimi",
+        "category": "component",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: A Birimi, B Birimine ölçümleri LVDS üzerinden gönderecektir."
+          }
+        ]
+      },
+      {
+        "id": "b",
+        "name": "B Birimi",
+        "category": "component",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: A Birimi, B Birimine ölçümleri LVDS üzerinden gönderecektir."
+          }
+        ]
+      }
+    ],
+    "connections": [
+      {
+        "id": "if_001",
+        "source": "a",
+        "target": "b",
+        "type": "data",
+        "protocol": "LVDS",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: A Birimi, B Birimine ölçümleri LVDS üzerinden gönderecektir."
+          }
+        ]
+      }
+    ],
+    "requirement_coverage": [
+      {
+        "requirement_id": "G-01",
+        "status": "covered",
+        "related_component_ids": [
+          "a",
+          "b"
+        ],
+        "related_connection_ids": [
+          "if_001"
+        ]
+      }
+    ]
+  },
+  "analysis": {
+    "findings": [],
+    "missing_information": [],
+    "open_questions": []
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "case_id": "dev_03",
+  "split": "dev",
+  "reference_status": "draft_reference_requires_engineer_review",
+  "components": [
+    {
+      "id": "power",
+      "name": "Güç Birimi",
+      "aliases": [
+        "Power Unit"
+      ]
+    },
+    {
+      "id": "cpu",
+      "name": "İşlemci",
+      "aliases": [
+        "Processor"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "source": "power",
+      "target": "cpu",
+      "type": "power",
+      "protocol": null
+    }
+  ],
+  "finding_rubric": []
+}

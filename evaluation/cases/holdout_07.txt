@@ -1,0 +1,1 @@
+G-01: Display shall receive image data from Camera over USB.

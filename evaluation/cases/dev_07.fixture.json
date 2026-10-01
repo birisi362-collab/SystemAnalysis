@@ -1,0 +1,62 @@
+{
+  "architecture": {
+    "system_name": "dev_07",
+    "components": [
+      {
+        "id": "cpu",
+        "name": "İşlemci",
+        "category": "component",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: İşlemci, Kameraya yönlendirme komutlarını RS-422 üzerinden gönderecektir."
+          }
+        ]
+      },
+      {
+        "id": "camera",
+        "name": "Kamera",
+        "category": "component",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: İşlemci, Kameraya yönlendirme komutlarını RS-422 üzerinden gönderecektir."
+          }
+        ]
+      }
+    ],
+    "connections": [
+      {
+        "id": "if_001",
+        "source": "cpu",
+        "target": "camera",
+        "type": "control",
+        "protocol": "RS-422",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: İşlemci, Kameraya yönlendirme komutlarını RS-422 üzerinden gönderecektir."
+          }
+        ]
+      }
+    ],
+    "requirement_coverage": [
+      {
+        "requirement_id": "G-01",
+        "status": "covered",
+        "related_component_ids": [
+          "cpu",
+          "camera"
+        ],
+        "related_connection_ids": [
+          "if_001"
+        ]
+      }
+    ]
+  },
+  "analysis": {
+    "findings": [],
+    "missing_information": [],
+    "open_questions": []
+  }
+}

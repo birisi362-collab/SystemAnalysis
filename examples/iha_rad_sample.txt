@@ -1,0 +1,37 @@
+Proje Adı: Çevre Güvenliği ve İHA Tespit Radar Sistemi (İHA-RAD) Teknik İsterler Dokümanı
+Sürüm: 1.0
+
+1. Sisteme Genel Bakış
+İHA-RAD sistemi, X-Band frekansında çalışan FMCW (Frekans Modülasyonlu Sürekli Dalga) tabanlı bir radar kullanarak alçak irtifa hedeflerini tespit ve takip edecek, eşzamanlı olarak elektro-optik sistemlerle görsel doğrulama sağlayacaktır.
+
+2. Alt Sistemler ve Donanım Bileşenleri
+RF Ön Yüz Modülü (RF Frontend): Hedefe X-Band elektromanyetik dalga gönderecek ve yansıyan sinyalleri alacaktır.
+
+Sinyal İşleme Kartı (FPGA/DSP): RF Ön Yüz Modülü'nden gelen analog verileri dijitale çevirecek (ADC) ve Menzil-Doppler FFT (Hızlı Fourier Dönüşümü) işlemlerini gerçek zamanlı olarak icra edecektir.
+
+Ana İşlem Birimi (MCU/CPU): Sinyal İşleme Kartı'ndan gelen nokta bulutu (point cloud) verilerini alarak hedef eşleştirme (tracking) algoritmalarını koşturacaktır.
+
+Elektro-Optik (EO/IR) Kamera: Hedefin tespit edildiği koordinatlara yönlenerek görsel ve termal teyit sağlayacaktır.
+
+Komuta Kontrol (C2) Yazılımı: Kullanıcıya radar izlerini ve kamera görüntülerini harita üzerinde sunan uzak masaüstü arayüzüdür.
+
+Güç Dağıtım Birimi (PDU): Sistemin ana enerji girişini regüle ederek tüm alt bileşenlere dağıtacaktır.
+
+Sıcaklık ve Nem Sensörleri: Radar muhafazası içindeki çevresel koşulları ölçecektir.
+
+3. Arayüz ve Bağlantı İsterleri (Topoloji)
+Sistemin blok mimarisi aşağıdaki donanımsal ve mantıksal bağlantıları sağlamak zorundadır:
+
+Güç Bağlantıları:
+PDU, şebekeden aldığı gerilimi 24V DC'ye çevirerek RF Ön Yüz Modülü, Sinyal İşleme Kartı, Ana İşlem Birimi ve Elektro-Optik Kamera'yı besleyecektir.
+
+Veri ve Kontrol Bağlantıları:
+RF Ön Yüz Modülü, elde ettiği ham verileri LVDS (Düşük Voltajlı Diferansiyel Sinyalleşme) hattı üzerinden Sinyal İşleme Kartı'na aktaracaktır.
+
+Sinyal İşleme Kartı, işlenmiş hedef verilerini PCIe veriyolu üzerinden yüksek hızda Ana İşlem Birimi'ne iletecektir.
+
+Ana İşlem Birimi, radarın yönlendirme komutlarını RS-422 seri haberleşme protokolü ile Elektro-Optik Kamera'ya gönderecektir.
+
+Ana İşlem Birimi, cihaz içi Sıcaklık ve Nem Sensörleri'nden gelen verileri I2C hattı üzerinden okuyacaktır.
+
+Ana İşlem Birimi, nihai hedef iz (track) verilerini ve sistem durum loglarını Gigabit Ethernet (TCP/IP) üzerinden Komuta Kontrol (C2) Yazılımı'na iletecektir.

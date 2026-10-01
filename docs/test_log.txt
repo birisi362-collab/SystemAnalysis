@@ -1,0 +1,48 @@
+test_demo_survives_rerun_and_profile_switch (test_ui.UITests.test_demo_survives_rerun_and_profile_switch) ... 2026-09-30 10:54:14.315 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+ok
+test_blank_pdf_stops (test_v6.CatalogTests.test_blank_pdf_stops) ... ok
+test_docx_order (test_v6.CatalogTests.test_docx_order) ... ok
+test_duplicate_source (test_v6.CatalogTests.test_duplicate_source) ... ok
+test_fallback_id_survives_prepend (test_v6.CatalogTests.test_fallback_id_survives_prepend) ... ok
+test_heading_and_requirement (test_v6.CatalogTests.test_heading_and_requirement) ... ok
+test_wrapped_requirement (test_v6.CatalogTests.test_wrapped_requirement) ... ok
+test_budget_before_llm (test_v6.PipelineTests.test_budget_before_llm) ... ok
+test_offline_and_replay (test_v6.PipelineTests.test_offline_and_replay) ... ok
+test_one_pass_is_skipped (test_v6.PipelineTests.test_one_pass_is_skipped) ... ok
+test_output_reuse_rejected (test_v6.PipelineTests.test_output_reuse_rejected) ... ok
+test_replay_prompt_mismatch (test_v6.PipelineTests.test_replay_prompt_mismatch) ... ok
+test_review_failure_preserves_architecture (test_v6.PipelineTests.test_review_failure_preserves_architecture) ... ok
+test_correct (test_v6.ScoringTests.test_correct) ... ok
+test_duplicate_penalized (test_v6.ScoringTests.test_duplicate_penalized) ... ok
+test_empty_prediction_not_success (test_v6.ScoringTests.test_empty_prediction_not_success) ... ok
+test_failure_visible (test_v6.ScoringTests.test_failure_visible) ... ok
+test_reverse (test_v6.ScoringTests.test_reverse) ... ok
+test_safe_render_identifiers (test_v6.ScoringTests.test_safe_render_identifiers) ... ok
+test_wrong_protocol_separate (test_v6.ScoringTests.test_wrong_protocol_separate) ... ok
+test_401_no_retry (test_v6.TransportTests.test_401_no_retry) ... ok
+test_429_retry_bound (test_v6.TransportTests.test_429_retry_bound) ... ok
+test_code_fence (test_v6.TransportTests.test_code_fence) ... ok
+test_generic_400_not_retried (test_v6.TransportTests.test_generic_400_not_retried) ... ok
+test_json_and_no_secret_in_record (test_v6.TransportTests.test_json_and_no_secret_in_record) ... ok
+test_prose_rejected (test_v6.TransportTests.test_prose_rejected) ... ok
+test_reasoning_not_final (test_v6.TransportTests.test_reasoning_not_final) ... ok
+test_response_format_fallback (test_v6.TransportTests.test_response_format_fallback) ... ok
+test_truncation (test_v6.TransportTests.test_truncation) ... ok
+test_duplicates (test_v6.ValidatorTests.test_duplicates) ... ok
+test_empty_coverage (test_v6.ValidatorTests.test_empty_coverage) ... ok
+test_empty_schema_rejected (test_v6.ValidatorTests.test_empty_schema_rejected) ... ok
+test_fake_quote (test_v6.ValidatorTests.test_fake_quote) ... ok
+test_findings_checked (test_v6.ValidatorTests.test_findings_checked) ... ok
+test_invalid_coverage (test_v6.ValidatorTests.test_invalid_coverage) ... ok
+test_invalid_endpoints (test_v6.ValidatorTests.test_invalid_endpoints) ... ok
+test_missing_protocol (test_v6.ValidatorTests.test_missing_protocol) ... ok
+test_missing_quote (test_v6.ValidatorTests.test_missing_quote) ... ok
+test_no_substring_can (test_v6.ValidatorTests.test_no_substring_can) ... ok
+test_omitted_protocol_in_quote (test_v6.ValidatorTests.test_omitted_protocol_in_quote) ... ok
+test_valid (test_v6.ValidatorTests.test_valid) ... ok
+test_wrong_protocol (test_v6.ValidatorTests.test_wrong_protocol) ... ok
+
+----------------------------------------------------------------------
+Ran 42 tests in 0.642s
+
+OK

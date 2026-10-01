@@ -1,0 +1,48 @@
+{
+  "mode": "fixture",
+  "note": "Offline plumbing test only; not a live model benchmark.",
+  "summary": {
+    "cases_attempted": 20,
+    "extraction_completed": 20,
+    "review_completed": 20,
+    "run_completion_rate": 1.0,
+    "quality_denominator": "Only cases with a parsed architecture. Consult completion rate alongside quality.",
+    "automatic_findings_scoring": false,
+    "components": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "tp": 42,
+      "expected": 42,
+      "predicted": 42,
+      "fp": 0,
+      "fn": 0
+    },
+    "directed_connections": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "tp": 21,
+      "expected": 21,
+      "predicted": 21,
+      "fp": 0,
+      "fn": 0
+    },
+    "connections_with_protocol": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "tp": 21,
+      "expected": 21,
+      "predicted": 21,
+      "fp": 0,
+      "fn": 0
+    },
+    "connections_with_type": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "tp": 21,
+      "expected": 21,
+      "predicted": 21,
+      "fp": 0,
+      "fn": 0
+    }
+  }
+}

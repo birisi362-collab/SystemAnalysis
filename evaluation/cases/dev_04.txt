@@ -1,0 +1,2 @@
+G-01: A Birimi, B Birimine verileri
+RS-485 üzerinden gönderecektir.

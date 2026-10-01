@@ -1,0 +1,64 @@
+{
+  "architecture": {
+    "system_name": "dev_05",
+    "components": [
+      {
+        "id": "a",
+        "name": "Unit A",
+        "category": "component",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: Unit A shall send measurements to Unit B. The interface protocol is unspecified."
+          }
+        ]
+      },
+      {
+        "id": "b",
+        "name": "Unit B",
+        "category": "component",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: Unit A shall send measurements to Unit B. The interface protocol is unspecified."
+          }
+        ]
+      }
+    ],
+    "connections": [
+      {
+        "id": "if_001",
+        "source": "a",
+        "target": "b",
+        "type": "data",
+        "protocol": null,
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: Unit A shall send measurements to Unit B. The interface protocol is unspecified."
+          }
+        ]
+      }
+    ],
+    "requirement_coverage": [
+      {
+        "requirement_id": "G-01",
+        "status": "covered",
+        "related_component_ids": [
+          "a",
+          "b"
+        ],
+        "related_connection_ids": [
+          "if_001"
+        ]
+      }
+    ]
+  },
+  "analysis": {
+    "findings": [],
+    "missing_information": [],
+    "open_questions": [
+      "Arayüz protokolünün belirtilmediğini sor; protokol uydurma."
+    ]
+  }
+}

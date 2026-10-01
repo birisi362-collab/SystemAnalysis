@@ -1,0 +1,62 @@
+{
+  "architecture": {
+    "system_name": "dev_02",
+    "components": [
+      {
+        "id": "sensor",
+        "name": "Sensor",
+        "category": "component",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: Sensor shall transmit measurements to Controller over UDP."
+          }
+        ]
+      },
+      {
+        "id": "controller",
+        "name": "Controller",
+        "category": "component",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: Sensor shall transmit measurements to Controller over UDP."
+          }
+        ]
+      }
+    ],
+    "connections": [
+      {
+        "id": "if_001",
+        "source": "sensor",
+        "target": "controller",
+        "type": "data",
+        "protocol": "UDP",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: Sensor shall transmit measurements to Controller over UDP."
+          }
+        ]
+      }
+    ],
+    "requirement_coverage": [
+      {
+        "requirement_id": "G-01",
+        "status": "covered",
+        "related_component_ids": [
+          "sensor",
+          "controller"
+        ],
+        "related_connection_ids": [
+          "if_001"
+        ]
+      }
+    ]
+  },
+  "analysis": {
+    "findings": [],
+    "missing_information": [],
+    "open_questions": []
+  }
+}

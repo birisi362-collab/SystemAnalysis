@@ -1,0 +1,26 @@
+{
+  "case_id": "holdout_01",
+  "split": "holdout",
+  "reference_status": "draft_reference_requires_engineer_review",
+  "components": [
+    {
+      "id": "rx",
+      "name": "Receiver",
+      "aliases": []
+    },
+    {
+      "id": "tx",
+      "name": "Transmitter",
+      "aliases": []
+    }
+  ],
+  "connections": [
+    {
+      "source": "tx",
+      "target": "rx",
+      "type": "data",
+      "protocol": "RS-422"
+    }
+  ],
+  "finding_rubric": []
+}

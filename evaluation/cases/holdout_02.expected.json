@@ -1,0 +1,26 @@
+{
+  "case_id": "holdout_02",
+  "split": "holdout",
+  "reference_status": "draft_reference_requires_engineer_review",
+  "components": [
+    {
+      "id": "driver",
+      "name": "Motor Sürücü",
+      "aliases": []
+    },
+    {
+      "id": "controller",
+      "name": "Kontrolcü",
+      "aliases": []
+    }
+  ],
+  "connections": [
+    {
+      "source": "controller",
+      "target": "driver",
+      "type": "control",
+      "protocol": "CAN"
+    }
+  ],
+  "finding_rubric": []
+}

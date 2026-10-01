@@ -1,0 +1,62 @@
+{
+  "architecture": {
+    "system_name": "holdout_01",
+    "components": [
+      {
+        "id": "rx",
+        "name": "Receiver",
+        "category": "component",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: Receiver shall receive measurements from Transmitter over RS422."
+          }
+        ]
+      },
+      {
+        "id": "tx",
+        "name": "Transmitter",
+        "category": "component",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: Receiver shall receive measurements from Transmitter over RS422."
+          }
+        ]
+      }
+    ],
+    "connections": [
+      {
+        "id": "if_001",
+        "source": "tx",
+        "target": "rx",
+        "type": "data",
+        "protocol": "RS-422",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: Receiver shall receive measurements from Transmitter over RS422."
+          }
+        ]
+      }
+    ],
+    "requirement_coverage": [
+      {
+        "requirement_id": "G-01",
+        "status": "covered",
+        "related_component_ids": [
+          "rx",
+          "tx"
+        ],
+        "related_connection_ids": [
+          "if_001"
+        ]
+      }
+    ]
+  },
+  "analysis": {
+    "findings": [],
+    "missing_information": [],
+    "open_questions": []
+  }
+}

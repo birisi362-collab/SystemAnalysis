@@ -1,0 +1,111 @@
+{
+  "architecture": {
+    "system_name": "holdout_04",
+    "components": [
+      {
+        "id": "logger",
+        "name": "Logger",
+        "category": "component",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: Logger shall receive data from Sensor over SPI."
+          },
+          {
+            "requirement_id": "G-02",
+            "quote": "G-02: Logger shall send data to Server over Ethernet."
+          }
+        ]
+      },
+      {
+        "id": "sensor",
+        "name": "Sensor",
+        "category": "component",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: Logger shall receive data from Sensor over SPI."
+          },
+          {
+            "requirement_id": "G-02",
+            "quote": "G-02: Logger shall send data to Server over Ethernet."
+          }
+        ]
+      },
+      {
+        "id": "server",
+        "name": "Server",
+        "category": "component",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: Logger shall receive data from Sensor over SPI."
+          },
+          {
+            "requirement_id": "G-02",
+            "quote": "G-02: Logger shall send data to Server over Ethernet."
+          }
+        ]
+      }
+    ],
+    "connections": [
+      {
+        "id": "if_001",
+        "source": "sensor",
+        "target": "logger",
+        "type": "data",
+        "protocol": "SPI",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: Logger shall receive data from Sensor over SPI."
+          }
+        ]
+      },
+      {
+        "id": "if_002",
+        "source": "logger",
+        "target": "server",
+        "type": "data",
+        "protocol": "Ethernet",
+        "evidence": [
+          {
+            "requirement_id": "G-02",
+            "quote": "G-02: Logger shall send data to Server over Ethernet."
+          }
+        ]
+      }
+    ],
+    "requirement_coverage": [
+      {
+        "requirement_id": "G-01",
+        "status": "covered",
+        "related_component_ids": [
+          "logger",
+          "sensor",
+          "server"
+        ],
+        "related_connection_ids": [
+          "if_001"
+        ]
+      },
+      {
+        "requirement_id": "G-02",
+        "status": "covered",
+        "related_component_ids": [
+          "logger",
+          "sensor",
+          "server"
+        ],
+        "related_connection_ids": [
+          "if_002"
+        ]
+      }
+    ]
+  },
+  "analysis": {
+    "findings": [],
+    "missing_information": [],
+    "open_questions": []
+  }
+}

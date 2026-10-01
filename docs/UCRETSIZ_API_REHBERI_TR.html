@@ -1,0 +1,210 @@
+<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>UCRETSIZ API REHBERI TR</title><style>body{font:17px/1.65 system-ui,-apple-system,Segoe UI,sans-serif;color:#172b40;background:#f7f9fc;margin:0}main{max-width:1000px;margin:30px auto;background:white;padding:36px 48px;border-radius:14px}h1{line-height:1.2;color:#123c60}h2{margin-top:38px;color:#125a80;border-bottom:1px solid #dce5ee;padding-bottom:8px}a{color:#096b9e}table{border-collapse:collapse;width:100%;font-size:15px}td,th{padding:10px;border:1px solid #d6e0e8;text-align:left}th{background:#edf4fa}pre{background:#102a43;color:#ecf4fc;padding:18px;overflow:auto;border-radius:8px}code{font-family:Consolas,monospace;font-size:.88em}li{margin:7px 0}@media(max-width:700px){main{padding:20px;margin:0}table{display:block;overflow:auto}}@media print{body{background:white}main{margin:0;padding:0}pre{white-space:pre-wrap}}</style></head><body><main><h1>Ücretsiz geliştirici API’si: adım adım kurulum</h1>
+<p>System Architecture Analyzer V6 • Kontrol tarihi: 30 Eylül 2026</p>
+<h2>Hangi seçeneği kullanacağız?</h2>
+<p>Başlangıç: <strong>NVIDIA Build üzerinden DeepSeek V4.1 Flash</strong>.
+Karşılaştırma: <strong>OpenRouter üzerinden Nemotron 3 Ultra (free)</strong>.</p>
+<p>Önemli ayrım: NVIDIA’nın eski <code>deepseek-v4-flash</code> sayfasında ücretsiz endpoint
+“Deprecated” olarak gösteriliyor. Bu nedenle paketteki hazır profil V4.1 Flash içindir.
+Bu iki sürüm aynı değildir. İç ağdaki V4 Flash başarısı ayrıca ölçülmelidir.</p>
+<p>Ücretsiz olan, sağlayıcının sunucusundaki modele geliştirme amacıyla API isteği göndermektir.
+Bilgisayarına modeli indirmen, GPU satın alman veya Docker kurman gerekmez.
+Tarayıcıda ücretsiz sohbet etmek ile Python’dan API kullanmak ayrı erişim yollarıdır.
+Burada API anahtarı oluşturup Python uygulamasına tanıtacağız.</p>
+<p>Ücretsiz erişim sınırsız kullanım veya kesintisiz hizmet garantisi değildir. Kota, hesap erişimi
+ve modelin ücretsiz sunulma durumu değişebilir. Bu rehberde sabit günlük kota sözü verilmez.</p>
+<h2>1. NVIDIA hesabını ve anahtarını oluştur</h2>
+<ol>
+<li><a href="https://build.nvidia.com/deepseek-ai/deepseek-v4.1-flash">DeepSeek V4.1 Flash model sayfasını aç</a>.</li>
+<li><strong>Login / Sign in</strong> ile NVIDIA hesabına giriş yap; hesabın yoksa e-posta ile oluştur.</li>
+<li>İstenirse geliştirici programı üyeliğini, e-posta/hesap doğrulamasını tamamla.</li>
+<li>Model sayfasındaki <strong>Get API Key / Generate API Key</strong> düğmesini kullan. Arayüzdeki isim değişebilir.</li>
+<li>Hesap kurulumu tamamlandığında oluşturulan anahtarı kopyala. Anahtarı bana göndermene gerek yok.</li>
+<li>Sayfada ücretsiz API yerine yalnızca partner veya kendi sunucuna kurulum seçenekleri varsa
+   bu modelin ücretsiz erişimi değişmiş olabilir. Ücretli dağıtım açmadan aşağıdaki OpenRouter yolunu kullan.</li>
+</ol>
+<p>Bu akış NVIDIA’nın resmî <a href="https://docs.api.nvidia.com/nim/re/docs/api-quickstart">API Catalog Quickstart</a>
+yönergesine dayanır. Ücretsiz geliştirici erişiminin kapsamı için
+<a href="https://docs.api.nvidia.com/nim/docs/product">resmî FAQ</a> sayfasını kontrol et.
+Bu rehber prototip/test API’si içindir; iç ağ üretim dağıtımının lisans ve altyapı seçimi ayrıdır.</p>
+<h2>2. Uygulamayı hazırla — Windows / Anaconda</h2>
+<p>ZIP’i çıkar. <code>README.md</code>, <code>ui_app.py</code> ve <code>requirements.txt</code> dosyalarının bulunduğu klasörü aç.
+Anaconda Prompt içinde bu klasöre geç; örnek yolunu kendi klasörünle değiştir:</p>
+<pre><code class="language-bat">cd /d C:\Projects\system_architecture_analyzer_v6
+python --version
+python -m pip install -r requirements.txt
+</code></pre>
+<p>Python 3.10 veya üzeri kullan. Spyder farklı bir Python ortamını kullanıyorsa paketleri
+Spyder’ın kullandığı ortama kurmalısın. Kurulum internet gerektirir; çevrimdışı testler
+bağımlılıklar kurulduktan sonra API’ye bağlanmaz.</p>
+<h2>3. Anahtarı uygulamaya tanıt — en kolay yol</h2>
+<pre><code class="language-bat">python -m streamlit run ui_app.py
+</code></pre>
+<p>Açılan ekranda:</p>
+<table>
+<thead>
+<tr>
+<th>Alan</th>
+<th>Değer</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Bağlantı profili</td>
+<td><code>nvidia_deepseek</code></td>
+</tr>
+<tr>
+<td>Base URL</td>
+<td><code>https://integrate.api.nvidia.com/v1</code></td>
+</tr>
+<tr>
+<td>Model ID</td>
+<td><code>deepseek-ai/deepseek-v4.1-flash</code></td>
+</tr>
+<tr>
+<td>API anahtarı</td>
+<td>Kendi NVIDIA anahtarın</td>
+</tr>
+<tr>
+<td>Endpoint yolu</td>
+<td><code>/chat/completions</code></td>
+</tr>
+<tr>
+<td>Tam endpoint</td>
+<td>Boş bırak</td>
+</tr>
+<tr>
+<td>Sağlayıcının JSON modu</td>
+<td>Başlangıçta kapalı</td>
+</tr>
+<tr>
+<td>Çıktı token sınırı</td>
+<td>Başlangıçta 8192</td>
+</tr>
+<tr>
+<td>Zaman aşımı</td>
+<td>Başlangıçta 180 saniye</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Bağlantıyı test et</strong> düğmesine bas. Bu, modele küçük bir JSON isteği gönderir ve kota kullanır.
+Başarı mesajını gördükten sonra <code>examples/sample_requirements.txt</code> dosyasını yükleyip
+<strong>Canlı analizi başlat</strong> düğmesini kullan. Sonucu çalışma ZIP’i olarak indirebilirsin.</p>
+<p>Bu oturumda anahtarı ekrana yazman yeterlidir. Sonraki açılışlarda ve komut satırındaki
+karşılaştırmalarda tekrar girmemek için bir sonraki adımı uygula.</p>
+<h2>4. Anahtarı .env dosyasında tut — CLI ve Spyder için</h2>
+<p>Ana klasörde <code>.env.example</code> dosyasının bir kopyasını oluştur ve adını <code>.env</code> yap:</p>
+<pre><code class="language-bat">copy .env.example .env
+</code></pre>
+<p><code>.env</code> dosyasını metin düzenleyicide aç ve ilgili satırı doldur:</p>
+<pre><code class="language-dotenv">NVIDIA_API_KEY=BURAYA_KENDI_ANAHTARIN
+</code></pre>
+<p><code>BURAYA_KENDI_ANAHTARIN</code> metni gerçek anahtar değildir; tamamını kendi anahtarınla değiştir.
+Dosyanın adının yanlışlıkla <code>.env.txt</code> olmamasına dikkat et.
+API anahtarını Python dosyasına veya profil JSON’una yazmana gerek yok.</p>
+<p>Ardından:</p>
+<pre><code class="language-bat">python -m app.main --profile profiles/nvidia_deepseek.json --probe
+</code></pre>
+<p>Bağlantı çalıştıysa:</p>
+<pre><code class="language-bat">python -m app.main examples/sample_requirements.txt --profile profiles/nvidia_deepseek.json
+</code></pre>
+<p>Spyder için <code>run_spyder.py</code> dosyasını açıp F5 kullanabilirsin.</p>
+<h2>5. İlk ücretsiz model değerlendirmesi</h2>
+<p>Önce yalnızca iki küçük örnekle başla:</p>
+<pre><code class="language-bat">python -m app.evaluation --mode live --profile profiles/nvidia_deepseek.json --split dev --limit 2 --output reports/deepseek_smoke
+</code></pre>
+<p>Bu komut normal durumda 4 LLM isteği yapar: her örnek için çıkarım + inceleme.
+Varsayılan sınırlı tekrar denemeleriyle üst sınır 8 HTTP isteğidir. Öncesindeki bağlantı testi ayrıdır.
+Çıktı klasörü yeni/boş olmalıdır; yeniden denemede farklı bir klasör adı kullan.</p>
+<p><code>reports/deepseek_smoke/evaluation.html</code> dosyasını tarayıcıda aç.
+<code>status=failed</code> ise önce hata koduna bak; bu durum otomatik olarak kötü model puanı demek değildir.</p>
+<h2>6. İkinci model: OpenRouter Nemotron</h2>
+<ol>
+<li><a href="https://openrouter.ai/">OpenRouter</a> hesabına giriş yap.</li>
+<li><a href="https://openrouter.ai/settings/keys">API Keys</a> sayfasında bir anahtar oluştur.</li>
+<li><a href="https://openrouter.ai/nvidia/nemotron-3-ultra-550b-a55b:free">Nemotron 3 Ultra free sayfasında</a>
+   modelin ücretsiz sunulduğunu kontrol et. Ücretli varyanta otomatik geçiş uygulamada yoktur.</li>
+<li><code>.env</code> içine ekle:</li>
+</ol>
+<pre><code class="language-dotenv">OPENROUTER_API_KEY=BURAYA_KENDI_OPENROUTER_ANAHTARIN
+</code></pre>
+<p>Arayüzde <code>openrouter_nemotron</code> profilini seçebilir veya şu komutu kullanabilirsin:</p>
+<pre><code class="language-bat">python -m app.evaluation --mode live --profile profiles/openrouter_nemotron.json --split dev --limit 2 --output reports/nemotron_smoke
+</code></pre>
+<p>İki koşuyu karşılaştır:</p>
+<pre><code class="language-bat">python -m app.evaluation --compare reports/deepseek_smoke/evaluation.json reports/nemotron_smoke/evaluation.json --output reports/comparison_smoke
+</code></pre>
+<p><code>comparison.json</code> içindeki <code>comparable_inputs</code> değeri aynı örneklerin ve prompt sürümünün
+kullanılıp kullanılmadığını gösterir. Aynı koşullarda bile küçük örnek sayısı kesin model sıralaması vermez.</p>
+<p>OpenRouter’da kota bilgisi hesabına bağlıdır; <a href="https://openrouter.ai/docs/api/reference/limits">resmî limitler</a>
+sayfasını esas al. Kota dolduğunda yeni hesap/anahtarla sınırı aşmaya çalışmak yerine bekle.</p>
+<h2>Hata aldığında</h2>
+<table>
+<thead>
+<tr>
+<th>Hata</th>
+<th>Anlamı / yapılacak işlem</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AUTHENTICATION</code> / 401</td>
+<td>Anahtarı, sağlayıcı profilini ve kopyalama hatalarını kontrol et.</td>
+</tr>
+<tr>
+<td><code>ACCESS_DENIED</code> / 403</td>
+<td>Hesabın endpoint erişimini ve istenen doğrulamaları kontrol et; sağlayıcı desteği gerekebilir.</td>
+</tr>
+<tr>
+<td><code>ENDPOINT_OR_MODEL</code> / 404</td>
+<td>Base URL, endpoint yolu ve model ID’sini resmî model sayfasıyla karşılaştır.</td>
+</tr>
+<tr>
+<td><code>RATE_LIMIT</code> / 429</td>
+<td>Kota/yoğunluk sorunu; sonra tekrar dene.</td>
+</tr>
+<tr>
+<td><code>SERVICE_UNAVAILABLE</code></td>
+<td>Sağlayıcı hizmet/kapasite sorunu.</td>
+</tr>
+<tr>
+<td><code>TIMEOUT</code></td>
+<td>İstek zamanında bitmedi; daha küçük dokümanla dene veya süreyi artır.</td>
+</tr>
+<tr>
+<td><code>TRUNCATED</code></td>
+<td>Çıktı token sınırına ulaşıldı; 16384 gibi daha yüksek sınırı sağlayıcı destekliyorsa dene.</td>
+</tr>
+<tr>
+<td><code>EMPTY_CONTENT</code></td>
+<td>Son cevap gelmedi; reasoning-only yanıt, token bütçesi veya model ayarlarını incele.</td>
+</tr>
+<tr>
+<td><code>INVALID_JSON</code></td>
+<td>Son yanıt JSON değil; çalışma kaydındaki final yanıtı incele.</td>
+</tr>
+<tr>
+<td><code>ValidationError</code> / <code>SCHEMA</code></td>
+<td>JSON var ama uygulamanın alanlarına uymuyor; kayıtlı yanıtla teşhis et.</td>
+</tr>
+<tr>
+<td><code>TLS</code></td>
+<td>Kurumsal CA sertifikasını tanıt; bu problemi model başarısıyla karıştırma.</td>
+</tr>
+</tbody>
+</table>
+<p><code>.env</code> içindeki <code>LLM_MODEL</code>, <code>LLM_BASE_URL</code>, <code>LLM_API_KEY</code> gibi genel ayarlar bütün profilleri
+geçersiz kılabilir. İki sağlayıcıyı karşılaştırırken bunları boş bırak; sağlayıcıya özel anahtarları kullan.
+Uygulama hata alınca başka modele otomatik geçmez; model karşılaştırması tutarlı kalır.</p>
+<p>İnternet testlerinde paketteki sentetik belgeleri kullan. Kaydedilen çalışma dosyaları kaynak metni
+ve modelin son yanıtlarını içerir; bunları paylaşmadan önce içeriklerini kontrol et.</p>
+<h2>Doğrulanan resmî kaynaklar</h2>
+<ul>
+<li><a href="https://build.nvidia.com/deepseek-ai/deepseek-v4-flash">V4 Flash: eski ücretsiz endpoint durumu</a></li>
+<li><a href="https://build.nvidia.com/deepseek-ai/deepseek-v4.1-flash">V4.1 Flash: model ID, base URL ve ücretsiz API</a></li>
+<li><a href="https://docs.api.nvidia.com/nim/re/docs/api-quickstart">NVIDIA hesap / API anahtarı adımları</a></li>
+<li><a href="https://docs.api.nvidia.com/nim/docs/product">NVIDIA geliştirici erişimi</a></li>
+<li><a href="https://openrouter.ai/nvidia/nemotron-3-ultra-550b-a55b:free">Nemotron 3 Ultra ücretsiz model sayfası</a></li>
+<li><a href="https://openrouter.ai/docs/api/reference/limits">OpenRouter limitleri</a></li>
+</ul>
+<p>Bu paket hazırlanırken kişisel API anahtarıyla canlı istek yapılmadı. Ücretsiz katalog durumu
+resmî sayfalardan kontrol edildi; hesabına özel erişim ilk bağlantı testinde doğrulanacak.</p></main></body></html>

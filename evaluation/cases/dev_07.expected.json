@@ -1,0 +1,26 @@
+{
+  "case_id": "dev_07",
+  "split": "dev",
+  "reference_status": "draft_reference_requires_engineer_review",
+  "components": [
+    {
+      "id": "cpu",
+      "name": "İşlemci",
+      "aliases": []
+    },
+    {
+      "id": "camera",
+      "name": "Kamera",
+      "aliases": []
+    }
+  ],
+  "connections": [
+    {
+      "source": "cpu",
+      "target": "camera",
+      "type": "control",
+      "protocol": "RS-422"
+    }
+  ],
+  "finding_rubric": []
+}

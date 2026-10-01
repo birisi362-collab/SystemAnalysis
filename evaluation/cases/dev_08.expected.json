@@ -1,0 +1,32 @@
+{
+  "case_id": "dev_08",
+  "split": "dev",
+  "reference_status": "draft_reference_requires_engineer_review",
+  "components": [
+    {
+      "id": "a",
+      "name": "Unit A",
+      "aliases": []
+    },
+    {
+      "id": "b",
+      "name": "Unit B",
+      "aliases": []
+    }
+  ],
+  "connections": [
+    {
+      "source": "a",
+      "target": "b",
+      "type": "data",
+      "protocol": "TCP"
+    },
+    {
+      "source": "b",
+      "target": "a",
+      "type": "data",
+      "protocol": "TCP"
+    }
+  ],
+  "finding_rubric": []
+}

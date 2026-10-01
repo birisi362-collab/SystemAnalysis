@@ -1,0 +1,62 @@
+{
+  "architecture": {
+    "system_name": "dev_10",
+    "components": [
+      {
+        "id": "fpga",
+        "name": "FPGA",
+        "category": "component",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: FPGA shall transmit samples to CPU over PCIe."
+          }
+        ]
+      },
+      {
+        "id": "cpu",
+        "name": "CPU",
+        "category": "component",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: FPGA shall transmit samples to CPU over PCIe."
+          }
+        ]
+      }
+    ],
+    "connections": [
+      {
+        "id": "if_001",
+        "source": "fpga",
+        "target": "cpu",
+        "type": "data",
+        "protocol": "PCIe",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: FPGA shall transmit samples to CPU over PCIe."
+          }
+        ]
+      }
+    ],
+    "requirement_coverage": [
+      {
+        "requirement_id": "G-01",
+        "status": "covered",
+        "related_component_ids": [
+          "fpga",
+          "cpu"
+        ],
+        "related_connection_ids": [
+          "if_001"
+        ]
+      }
+    ]
+  },
+  "analysis": {
+    "findings": [],
+    "missing_information": [],
+    "open_questions": []
+  }
+}

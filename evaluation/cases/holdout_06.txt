@@ -1,0 +1,2 @@
+G-01: Unit A shall send data to Unit B over UDP.
+G-02: The same sole interface from Unit A to Unit B shall use TCP only; UDP is prohibited.

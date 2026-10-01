@@ -1,0 +1,26 @@
+{
+  "case_id": "dev_02",
+  "split": "dev",
+  "reference_status": "draft_reference_requires_engineer_review",
+  "components": [
+    {
+      "id": "sensor",
+      "name": "Sensor",
+      "aliases": []
+    },
+    {
+      "id": "controller",
+      "name": "Controller",
+      "aliases": []
+    }
+  ],
+  "connections": [
+    {
+      "source": "sensor",
+      "target": "controller",
+      "type": "data",
+      "protocol": "UDP"
+    }
+  ],
+  "finding_rubric": []
+}

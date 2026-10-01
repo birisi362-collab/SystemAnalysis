@@ -1,0 +1,1 @@
+G-01: Receiver shall receive measurements from Transmitter over RS422.

@@ -1,0 +1,10 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+outputs*/
+reports*/
+*.pem
+venv/
+web/node_modules/
+workbench_data/

@@ -1,0 +1,2 @@
+G-01: Unit A shall send data to Unit B over TCP/IP.
+G-02: Unit B shall send data to Unit A over TCP/IP.

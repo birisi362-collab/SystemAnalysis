@@ -1,0 +1,96 @@
+{
+  "architecture": {
+    "system_name": "holdout_06",
+    "components": [
+      {
+        "id": "a",
+        "name": "Unit A",
+        "category": "component",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: Unit A shall send data to Unit B over UDP."
+          },
+          {
+            "requirement_id": "G-02",
+            "quote": "G-02: The same sole interface from Unit A to Unit B shall use TCP only; UDP is prohibited."
+          }
+        ]
+      },
+      {
+        "id": "b",
+        "name": "Unit B",
+        "category": "component",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: Unit A shall send data to Unit B over UDP."
+          },
+          {
+            "requirement_id": "G-02",
+            "quote": "G-02: The same sole interface from Unit A to Unit B shall use TCP only; UDP is prohibited."
+          }
+        ]
+      }
+    ],
+    "connections": [
+      {
+        "id": "if_001",
+        "source": "a",
+        "target": "b",
+        "type": "data",
+        "protocol": "UDP",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: Unit A shall send data to Unit B over UDP."
+          }
+        ]
+      },
+      {
+        "id": "if_002",
+        "source": "a",
+        "target": "b",
+        "type": "data",
+        "protocol": "TCP",
+        "evidence": [
+          {
+            "requirement_id": "G-02",
+            "quote": "G-02: The same sole interface from Unit A to Unit B shall use TCP only; UDP is prohibited."
+          }
+        ]
+      }
+    ],
+    "requirement_coverage": [
+      {
+        "requirement_id": "G-01",
+        "status": "covered",
+        "related_component_ids": [
+          "a",
+          "b"
+        ],
+        "related_connection_ids": [
+          "if_001"
+        ]
+      },
+      {
+        "requirement_id": "G-02",
+        "status": "covered",
+        "related_component_ids": [
+          "a",
+          "b"
+        ],
+        "related_connection_ids": [
+          "if_002"
+        ]
+      }
+    ]
+  },
+  "analysis": {
+    "findings": [],
+    "missing_information": [],
+    "open_questions": [
+      "Aynı arayüz için UDP ve TCP-only şartlarının çelişkisini G-01/G-02 ile destekle."
+    ]
+  }
+}

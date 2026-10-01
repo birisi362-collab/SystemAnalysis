@@ -1,0 +1,1 @@
+G-01: FPGA shall transmit samples to CPU over PCIe.

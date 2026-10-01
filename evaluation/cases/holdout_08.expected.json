@@ -1,0 +1,21 @@
+{
+  "case_id": "holdout_08",
+  "split": "holdout",
+  "reference_status": "draft_reference_requires_engineer_review",
+  "components": [
+    {
+      "id": "a",
+      "name": "A Birimi",
+      "aliases": []
+    },
+    {
+      "id": "b",
+      "name": "B Birimi",
+      "aliases": []
+    }
+  ],
+  "connections": [],
+  "finding_rubric": [
+    "Olumsuz cümleden pozitif veri bağlantısı çıkarma."
+  ]
+}

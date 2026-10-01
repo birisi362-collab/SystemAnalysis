@@ -1,0 +1,62 @@
+{
+  "architecture": {
+    "system_name": "dev_03",
+    "components": [
+      {
+        "id": "power",
+        "name": "Güç Birimi",
+        "category": "component",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: Güç Birimi, İşlemciye 24V DC güç sağlayacaktır."
+          }
+        ]
+      },
+      {
+        "id": "cpu",
+        "name": "İşlemci",
+        "category": "component",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: Güç Birimi, İşlemciye 24V DC güç sağlayacaktır."
+          }
+        ]
+      }
+    ],
+    "connections": [
+      {
+        "id": "if_001",
+        "source": "power",
+        "target": "cpu",
+        "type": "power",
+        "protocol": null,
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: Güç Birimi, İşlemciye 24V DC güç sağlayacaktır."
+          }
+        ]
+      }
+    ],
+    "requirement_coverage": [
+      {
+        "requirement_id": "G-01",
+        "status": "covered",
+        "related_component_ids": [
+          "power",
+          "cpu"
+        ],
+        "related_connection_ids": [
+          "if_001"
+        ]
+      }
+    ]
+  },
+  "analysis": {
+    "findings": [],
+    "missing_information": [],
+    "open_questions": []
+  }
+}

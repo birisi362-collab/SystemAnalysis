@@ -1,0 +1,65 @@
+{
+  "architecture": {
+    "system_name": "holdout_05",
+    "components": [
+      {
+        "id": "a",
+        "name": "A Birimi",
+        "category": "component",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: Sistem, A Birimi ve B Birimini içerecektir."
+          },
+          {
+            "requirement_id": "G-02",
+            "quote": "G-02: A Birimi ile B Birimi arasında bir veri arayüzü bulunacaktır; yön ve protokol daha sonra belirlenecektir."
+          }
+        ]
+      },
+      {
+        "id": "b",
+        "name": "B Birimi",
+        "category": "component",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: Sistem, A Birimi ve B Birimini içerecektir."
+          },
+          {
+            "requirement_id": "G-02",
+            "quote": "G-02: A Birimi ile B Birimi arasında bir veri arayüzü bulunacaktır; yön ve protokol daha sonra belirlenecektir."
+          }
+        ]
+      }
+    ],
+    "connections": [],
+    "requirement_coverage": [
+      {
+        "requirement_id": "G-01",
+        "status": "covered",
+        "related_component_ids": [
+          "a",
+          "b"
+        ],
+        "related_connection_ids": []
+      },
+      {
+        "requirement_id": "G-02",
+        "status": "covered",
+        "related_component_ids": [
+          "a",
+          "b"
+        ],
+        "related_connection_ids": []
+      }
+    ]
+  },
+  "analysis": {
+    "findings": [],
+    "missing_information": [],
+    "open_questions": [
+      "Yönü ve protokolü belirsiz bırak; yönlü bağlantı uydurma."
+    ]
+  }
+}

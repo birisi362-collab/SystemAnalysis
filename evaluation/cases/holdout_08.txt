@@ -1,0 +1,2 @@
+G-01: Sistem A Birimi ve B Birimini içerecektir.
+G-02: A Birimi, B Biriminden veri almayacaktır. Arayüz tanımlı değildir.

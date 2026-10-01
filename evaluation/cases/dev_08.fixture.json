@@ -1,0 +1,94 @@
+{
+  "architecture": {
+    "system_name": "dev_08",
+    "components": [
+      {
+        "id": "a",
+        "name": "Unit A",
+        "category": "component",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: Unit A shall send data to Unit B over TCP/IP."
+          },
+          {
+            "requirement_id": "G-02",
+            "quote": "G-02: Unit B shall send data to Unit A over TCP/IP."
+          }
+        ]
+      },
+      {
+        "id": "b",
+        "name": "Unit B",
+        "category": "component",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: Unit A shall send data to Unit B over TCP/IP."
+          },
+          {
+            "requirement_id": "G-02",
+            "quote": "G-02: Unit B shall send data to Unit A over TCP/IP."
+          }
+        ]
+      }
+    ],
+    "connections": [
+      {
+        "id": "if_001",
+        "source": "a",
+        "target": "b",
+        "type": "data",
+        "protocol": "TCP",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: Unit A shall send data to Unit B over TCP/IP."
+          }
+        ]
+      },
+      {
+        "id": "if_002",
+        "source": "b",
+        "target": "a",
+        "type": "data",
+        "protocol": "TCP",
+        "evidence": [
+          {
+            "requirement_id": "G-02",
+            "quote": "G-02: Unit B shall send data to Unit A over TCP/IP."
+          }
+        ]
+      }
+    ],
+    "requirement_coverage": [
+      {
+        "requirement_id": "G-01",
+        "status": "covered",
+        "related_component_ids": [
+          "a",
+          "b"
+        ],
+        "related_connection_ids": [
+          "if_001"
+        ]
+      },
+      {
+        "requirement_id": "G-02",
+        "status": "covered",
+        "related_component_ids": [
+          "a",
+          "b"
+        ],
+        "related_connection_ids": [
+          "if_002"
+        ]
+      }
+    ]
+  },
+  "analysis": {
+    "findings": [],
+    "missing_information": [],
+    "open_questions": []
+  }
+}

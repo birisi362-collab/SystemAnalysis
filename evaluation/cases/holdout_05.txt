@@ -1,0 +1,2 @@
+G-01: Sistem, A Birimi ve B Birimini içerecektir.
+G-02: A Birimi ile B Birimi arasında bir veri arayüzü bulunacaktır; yön ve protokol daha sonra belirlenecektir.

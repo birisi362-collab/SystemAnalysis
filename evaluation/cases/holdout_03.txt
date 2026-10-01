@@ -1,0 +1,2 @@
+G-01: Power Supply shall supply power to CPU.
+G-02: Power Supply shall supply power to Camera.

@@ -1,0 +1,1 @@
+G-01: Unit A shall send measurements to Unit B. The interface protocol is unspecified.

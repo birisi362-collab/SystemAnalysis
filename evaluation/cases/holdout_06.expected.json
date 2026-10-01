@@ -1,0 +1,34 @@
+{
+  "case_id": "holdout_06",
+  "split": "holdout",
+  "reference_status": "draft_reference_requires_engineer_review",
+  "components": [
+    {
+      "id": "a",
+      "name": "Unit A",
+      "aliases": []
+    },
+    {
+      "id": "b",
+      "name": "Unit B",
+      "aliases": []
+    }
+  ],
+  "connections": [
+    {
+      "source": "a",
+      "target": "b",
+      "type": "data",
+      "protocol": "UDP"
+    },
+    {
+      "source": "a",
+      "target": "b",
+      "type": "data",
+      "protocol": "TCP"
+    }
+  ],
+  "finding_rubric": [
+    "Aynı arayüz için UDP ve TCP-only şartlarının çelişkisini G-01/G-02 ile destekle."
+  ]
+}

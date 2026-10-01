@@ -1,0 +1,62 @@
+{
+  "architecture": {
+    "system_name": "dev_09",
+    "components": [
+      {
+        "id": "sensor",
+        "name": "Sensör",
+        "category": "component",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: Sensör, İşlemciye ölçümleri I2C üzerinden gönderecektir."
+          }
+        ]
+      },
+      {
+        "id": "cpu",
+        "name": "İşlemci",
+        "category": "component",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: Sensör, İşlemciye ölçümleri I2C üzerinden gönderecektir."
+          }
+        ]
+      }
+    ],
+    "connections": [
+      {
+        "id": "if_001",
+        "source": "sensor",
+        "target": "cpu",
+        "type": "data",
+        "protocol": "I2C",
+        "evidence": [
+          {
+            "requirement_id": "G-01",
+            "quote": "G-01: Sensör, İşlemciye ölçümleri I2C üzerinden gönderecektir."
+          }
+        ]
+      }
+    ],
+    "requirement_coverage": [
+      {
+        "requirement_id": "G-01",
+        "status": "covered",
+        "related_component_ids": [
+          "sensor",
+          "cpu"
+        ],
+        "related_connection_ids": [
+          "if_001"
+        ]
+      }
+    ]
+  },
+  "analysis": {
+    "findings": [],
+    "missing_information": [],
+    "open_questions": []
+  }
+}

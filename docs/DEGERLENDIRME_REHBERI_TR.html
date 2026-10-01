@@ -1,0 +1,125 @@
+<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>DEGERLENDIRME REHBERI TR</title><style>body{font:17px/1.65 system-ui,-apple-system,Segoe UI,sans-serif;color:#172b40;background:#f7f9fc;margin:0}main{max-width:1000px;margin:30px auto;background:white;padding:36px 48px;border-radius:14px}h1{line-height:1.2;color:#123c60}h2{margin-top:38px;color:#125a80;border-bottom:1px solid #dce5ee;padding-bottom:8px}a{color:#096b9e}table{border-collapse:collapse;width:100%;font-size:15px}td,th{padding:10px;border:1px solid #d6e0e8;text-align:left}th{background:#edf4fa}pre{background:#102a43;color:#ecf4fc;padding:18px;overflow:auto;border-radius:8px}code{font-family:Consolas,monospace;font-size:.88em}li{margin:7px 0}@media(max-width:700px){main{padding:20px;margin:0}table{display:block;overflow:auto}}@media print{body{background:white}main{margin:0;padding:0}pre{white-space:pre-wrap}}</style></head><body><main><h1>V6 değerlendirme rehberi</h1>
+<h2>Üç farklı kanıt türü</h2>
+<ol>
+<li><strong>Otomatik kod testleri:</strong> Hatalı alıntı, protokol, referans, API yanıtı, skor ve arayüz durumunu sınar.</li>
+<li><strong>Fixture / replay:</strong> Hazır veya daha önce kaydedilmiş yanıtla uygulamayı çalıştırır. Model kalitesi ölçmez.</li>
+<li><strong>Live:</strong> Gerçek endpoint’e yeni istek yapar. Model/prompt davranışını taslak referanslarla karşılaştırır.</li>
+</ol>
+<p>Başka bir LLM’yi hakem yapmıyoruz. Referans JSON’lar başlangıç taslağıdır; mühendis incelemesinden
+sonra sabitlenmelidir. Özellikle olumsuz, belirsiz ve çelişkili gereksinimlerde doğru mimari temsili
+birden fazla olabilir. Böyle durumlarda referansı ve isim eşanlamlarını açıkça güncelle, sürüm değiştir.</p>
+<h2>Kodun sağlamlığını sınama</h2>
+<pre><code class="language-bat">python -m unittest discover -s tests -v
+</code></pre>
+<p>Testler gerçek NVIDIA/OpenRouter servisine istek göndermez. HTTP davranışları test çiftleriyle
+sınanır; Streamlit test aracı ekranın yeniden çalıştırılması sırasında sonuçların korunduğunu kontrol eder.</p>
+<h2>API’siz tüm örnekleri çalıştırma</h2>
+<pre><code class="language-bat">python -m app.evaluation --mode fixture --split all --output reports/offline_check
+</code></pre>
+<p>20 örneğin işlenmesi gerekir. Bu modda referanslara uyan hazır mimariler kullanıldığı için
+puanların yüksek olması beklenir; <strong>DeepSeek’in veya başka bir modelin başarısı hakkında kanıt değildir</strong>.
+Fixture inceleme cevapları da tam bir semantik bulgu referansı değildir.</p>
+<h2>Canlı değerlendirme planı</h2>
+<p>İlk adım: API rehberindeki iki örneklik smoke koşusu.
+Sonra iki modeli aynı 12 geliştirme örneğinde çalıştır:</p>
+<pre><code class="language-bat">python -m app.evaluation --mode live --profile profiles/nvidia_deepseek.json --split dev --output reports/deepseek_dev
+python -m app.evaluation --mode live --profile profiles/openrouter_nemotron.json --split dev --output reports/nemotron_dev
+</code></pre>
+<p>Her koşu taban 24, varsayılan tek tekrar denemesiyle en fazla 48 HTTP çağrısıdır.
+Günlük kotana göre <code>--limit</code> kullan. Koşular ardışık çalışır. Tekrar sayısı <code>--repeats 3</code> yapılırsa
+çağrı bütçesi de üç katına çıkar. Yalnızca son adaylarda tekrar yap.</p>
+<p>Prompt/model ayarları sabitlendikten sonra 8 holdout örneğini çalıştır:</p>
+<pre><code class="language-bat">python -m app.evaluation --mode live --profile profiles/nvidia_deepseek.json --split holdout --repeats 3 --output reports/deepseek_holdout
+</code></pre>
+<p>Holdout'u tekrar tekrar prompt ayarlamak için kullanırsan bağımsız son kontrol niteliği zayıflar.
+Bu küçük test seti ürün kabul standardı değildir; gerçek hedef ortama uygun ek örnekler gerektirir.</p>
+<h2>Raporları okuma</h2>
+<table>
+<thead>
+<tr>
+<th>Alan</th>
+<th>Yorum</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>run_completion_rate</code></td>
+<td>Çıkarım ve ikinci turu tamamlanan koşular / tüm koşular.</td>
+</tr>
+<tr>
+<td><code>extraction_completed</code></td>
+<td>Mimari JSON’u şemaya uyan koşu sayısı.</td>
+</tr>
+<tr>
+<td><code>directed_connections.precision</code></td>
+<td>Üretilen bağlantıların ne kadarı doğru uç ve yöne sahip?</td>
+</tr>
+<tr>
+<td><code>directed_connections.recall</code></td>
+<td>Beklenen yönlü bağlantıların ne kadarı bulundu?</td>
+</tr>
+<tr>
+<td><code>connections_with_protocol</code></td>
+<td>Uçlar ve yönle birlikte protokol eşleşmesi.</td>
+</tr>
+<tr>
+<td><code>connections_with_type</code></td>
+<td>Uçlar ve yönle birlikte bağlantı türü eşleşmesi.</td>
+</tr>
+<tr>
+<td><code>components</code></td>
+<td>Bileşen isimlerinin referans isim/eşanlam listesiyle eşleşmesi.</td>
+</tr>
+<tr>
+<td><code>quote_containment</code></td>
+<td>Alıntı gerçekten verilen kaynak kaydında mı? Anlamsal desteği kanıtlamaz.</td>
+</tr>
+<tr>
+<td><code>validation_errors</code></td>
+<td>Deterministik doğrulama hataları. Sıfır olması doğruluk onayı değildir.</td>
+</tr>
+<tr>
+<td><code>findings_semantic_score</code></td>
+<td>Bilerek <code>null</code>; mühendis değerlendirmesi gerekir.</td>
+</tr>
+</tbody>
+</table>
+<p>Precision = TP / üretilen; recall = TP / beklenen. Tekrarlanan bağlantılar fazladan üretim olarak
+cezalandırılır. Payda sıfırsa <code>null</code> gösterilir; boş yanıt %100 başarı sayılmaz.
+Mimari çıkarılamayan koşular kalite hesabına girmez fakat tamamlanma oranında başarısızdır.
+Bu yüzden kalite puanlarını tamamlanma oranıyla birlikte değerlendir.</p>
+<p>İsim eşleşmesi bilinçli olarak muhafazakârdır: yalnızca referans adı ve <code>aliases</code> kullanılır;
+bulanık benzerlik ile yanlış bileşen eşleştirilmez. <code>unmatched_component_names</code> listesindeki
+geçerli alternatif isimleri insan kontrolüyle referansa ekleyebilirsin. Prompttaki ID’ler değişse de
+bileşen isimleri eşleşiyorsa bağlantılar karşılaştırılabilir.</p>
+<p><code>human_review.csv</code> içinde üretilen bulgular ve beklenen inceleme maddeleri bulunur.
+Her bulgu için doğru / yanlış / belirsiz kararını ve notunu doldur. Beklenen maddelerin
+atlanıp atlanmadığını ayrıca kaydet. V6 bu dosyadan otomatik toplam semantik skor hesaplamaz.</p>
+<h2>Çalışma kaydı ve replay</h2>
+<p>Her analizde:
+- <code>source_catalog.json</code>: tam kaynak metni, kimlik ve konum.
+- <code>architecture_pass1.json</code>: ikinci turdan bağımsız mimari.
+- <code>analysis_result.json</code>: birleşik sonuç, inceleme durumu ve uyarılar.
+- <code>run_record.json</code>: promptlar, son model yanıtları, kullanım bilgisi (sağlayıcı döndürürse),
+  süre, endpoint/model ayarları, hata kodları ve içerik hash’leri.
+- <code>report.html</code>, DOT ve Mermaid; Graphviz sistem aracı varsa SVG.</p>
+<p>Başarısız bir koşuda bütün çıktıların oluşması beklenmez; çalışma kaydı teşhis için saklanır.
+API anahtarı/Authorization başlığı kayıt altına alınmaz; gizli reasoning alanları da saklanmaz.
+Kaynak metinleri ve final yanıtlar ise kaydedilir.</p>
+<pre><code class="language-bat">python -m app.main evaluation/cases/dev_01.txt --replay reports/deepseek_smoke/dev_01/run_1/run_record.json --output outputs/replay_01
+</code></pre>
+<p>Replay yeni API isteği yapmaz. Prompt hash’i eşleşmezse durur. Aynı kaydı bir prompt iyileştirmesinin
+kanıtı olarak kullanamayız; prompt değişikliğini canlı koşuyla ölçmeliyiz.</p>
+<h2>V6 sınırları</h2>
+<ul>
+<li>Karakter bütçesi varsayılan 60000; bu bir token sayacı değildir. Aşılırsa metin kesilmez, durulur.</li>
+<li>Otomatik bölümleme/bölümler arası mimari birleştirme bu sürümde yoktur.</li>
+<li>OCR yoktur; metinsiz PDF sayfası varsa sessizce atlanmaz, analiz durur.</li>
+<li>Gereksinim ayırma sezgiseldir; kaynak sekmesini kontrol et. DOCX'te tablo/paragraf sırası korunur;
+  başlık/altbilgi, metin kutuları ve karmaşık çizim içerikleri desteklenmez.</li>
+<li>Alıntının varlığı, alıntının bağlantıyı gerçekten desteklediği anlamına gelmez.</li>
+<li>Protokol kontrolü sınırlı bir teknoloji sözlüğü kullanır; çoklu arayüz içeren cümleler inceleme uyarısı doğurabilir.</li>
+<li>Yönün anlamsal doğruluğu test setinde ölçülür; genel amaçlı Python doğrulayıcı bunu kanıtlamaz.</li>
+<li>Şema düzenleme, kullanıcı onaylarının kalıcı saklanması, çok kullanıcılı proje yönetimi sonraki aşamadır.</li>
+<li>İç ağ modelinin kabul testi yapılmadan dış ağ sonuçları üretim doğruluğu sayılmaz.</li>
+</ul></main></body></html>

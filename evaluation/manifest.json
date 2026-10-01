@@ -1,0 +1,145 @@
+{
+  "version": "1.0",
+  "cases": [
+    {
+      "id": "dev_01",
+      "split": "dev",
+      "input": "cases/dev_01.txt",
+      "expected": "cases/dev_01.expected.json",
+      "fixture": "cases/dev_01.fixture.json"
+    },
+    {
+      "id": "dev_02",
+      "split": "dev",
+      "input": "cases/dev_02.txt",
+      "expected": "cases/dev_02.expected.json",
+      "fixture": "cases/dev_02.fixture.json"
+    },
+    {
+      "id": "dev_03",
+      "split": "dev",
+      "input": "cases/dev_03.txt",
+      "expected": "cases/dev_03.expected.json",
+      "fixture": "cases/dev_03.fixture.json"
+    },
+    {
+      "id": "dev_04",
+      "split": "dev",
+      "input": "cases/dev_04.txt",
+      "expected": "cases/dev_04.expected.json",
+      "fixture": "cases/dev_04.fixture.json"
+    },
+    {
+      "id": "dev_05",
+      "split": "dev",
+      "input": "cases/dev_05.txt",
+      "expected": "cases/dev_05.expected.json",
+      "fixture": "cases/dev_05.fixture.json"
+    },
+    {
+      "id": "dev_06",
+      "split": "dev",
+      "input": "cases/dev_06.txt",
+      "expected": "cases/dev_06.expected.json",
+      "fixture": "cases/dev_06.fixture.json"
+    },
+    {
+      "id": "dev_07",
+      "split": "dev",
+      "input": "cases/dev_07.txt",
+      "expected": "cases/dev_07.expected.json",
+      "fixture": "cases/dev_07.fixture.json"
+    },
+    {
+      "id": "dev_08",
+      "split": "dev",
+      "input": "cases/dev_08.txt",
+      "expected": "cases/dev_08.expected.json",
+      "fixture": "cases/dev_08.fixture.json"
+    },
+    {
+      "id": "dev_09",
+      "split": "dev",
+      "input": "cases/dev_09.txt",
+      "expected": "cases/dev_09.expected.json",
+      "fixture": "cases/dev_09.fixture.json"
+    },
+    {
+      "id": "dev_10",
+      "split": "dev",
+      "input": "cases/dev_10.txt",
+      "expected": "cases/dev_10.expected.json",
+      "fixture": "cases/dev_10.fixture.json"
+    },
+    {
+      "id": "dev_11",
+      "split": "dev",
+      "input": "cases/dev_11.txt",
+      "expected": "cases/dev_11.expected.json",
+      "fixture": "cases/dev_11.fixture.json"
+    },
+    {
+      "id": "dev_12",
+      "split": "dev",
+      "input": "cases/dev_12.txt",
+      "expected": "cases/dev_12.expected.json",
+      "fixture": "cases/dev_12.fixture.json"
+    },
+    {
+      "id": "holdout_01",
+      "split": "holdout",
+      "input": "cases/holdout_01.txt",
+      "expected": "cases/holdout_01.expected.json",
+      "fixture": "cases/holdout_01.fixture.json"
+    },
+    {
+      "id": "holdout_02",
+      "split": "holdout",
+      "input": "cases/holdout_02.txt",
+      "expected": "cases/holdout_02.expected.json",
+      "fixture": "cases/holdout_02.fixture.json"
+    },
+    {
+      "id": "holdout_03",
+      "split": "holdout",
+      "input": "cases/holdout_03.txt",
+      "expected": "cases/holdout_03.expected.json",
+      "fixture": "cases/holdout_03.fixture.json"
+    },
+    {
+      "id": "holdout_04",
+      "split": "holdout",
+      "input": "cases/holdout_04.txt",
+      "expected": "cases/holdout_04.expected.json",
+      "fixture": "cases/holdout_04.fixture.json"
+    },
+    {
+      "id": "holdout_05",
+      "split": "holdout",
+      "input": "cases/holdout_05.txt",
+      "expected": "cases/holdout_05.expected.json",
+      "fixture": "cases/holdout_05.fixture.json"
+    },
+    {
+      "id": "holdout_06",
+      "split": "holdout",
+      "input": "cases/holdout_06.txt",
+      "expected": "cases/holdout_06.expected.json",
+      "fixture": "cases/holdout_06.fixture.json"
+    },
+    {
+      "id": "holdout_07",
+      "split": "holdout",
+      "input": "cases/holdout_07.txt",
+      "expected": "cases/holdout_07.expected.json",
+      "fixture": "cases/holdout_07.fixture.json"
+    },
+    {
+      "id": "holdout_08",
+      "split": "holdout",
+      "input": "cases/holdout_08.txt",
+      "expected": "cases/holdout_08.expected.json",
+      "fixture": "cases/holdout_08.fixture.json"
+    }
+  ]
+}
