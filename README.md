@@ -94,3 +94,13 @@ OCR, şema düzenleme ve kalıcı mühendis onay akışı sonraki aşamalardır.
 model çıktısının mühendislik doğruluğunu tek başına garanti etmez.
 
 `docs/TEST_SONUCLARI_TR.md` teslim öncesi doğrulamanın kapsamını açıklar.
+
+
+Berkay---
+git clone https://github.com/birisi362-collab/SystemAnalysis.git
+cd SystemAnalysis
+
+python -m venv venv
+.\venv\Scripts\python.exe -m pip install -r requirements-workbench.txt
+
+.\run_app.bat
