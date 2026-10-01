@@ -124,7 +124,7 @@ def create_app(data_dir=None, dist_dir=None):
                 runs.append(dict(path=str(path.parent), name=data['architecture']['system_name'], run=path.parent.name, model=data.get('run_metadata', {}).get('settings', {}).get('model', 'Bilinmiyor')))
             except (OSError, ValueError, KeyError):
                 continue
-        return dict(token=token, projects=store.list(), runs=runs, profiles=profiles(), jobs=store.jobs(), root=str(ROOT), version='1.0', demo_input=str(ROOT/'examples/iha_rad_sample.txt'))
+        return dict(token=token, projects=store.list(), runs=runs, profiles=profiles(), jobs=store.jobs(), root=str(ROOT), version='1.2', demo_input=str(ROOT/'examples/iha_rad_sample.txt'))
 
     @api.get('/api/projects')
     def projects():
@@ -149,7 +149,7 @@ def create_app(data_dir=None, dist_dir=None):
     def export(pid: str):
         project = store.get(pid)
         state = project['state']
-        final = FinalModel.model_validate({**project['original'], 'architecture': state['architecture'], 'analysis': state['analysis'], 'validation_issues': [{k:v for k,v in i.items() if k in {'severity','code','message','related_id'}} for i in project['issues']]})
+        final = FinalModel.model_validate({**project['original'], 'architecture': state['architecture'], 'analysis': state['analysis'], 'validation_issues': [{k:v for k,v in i.items() if k in {'severity','code','message','related_id','source_id','object_id','finding_id'}} for i in project['issues']]})
         final.run_metadata.update(engineering_review_version=project['version'], original_sha256=project['origin_hash'], human_review_required=True)
         final.run_metadata['validation_error_count'] = sum(i.severity == 'error' for i in final.validation_issues)
         content = io.BytesIO()

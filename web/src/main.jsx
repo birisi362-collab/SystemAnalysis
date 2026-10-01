@@ -41,7 +41,6 @@ import {
   ChevronRight,
   Link2,
   Lightbulb,
-  GitCompareArrows,
   Play,
   LoaderCircle,
   CircleHelp,
@@ -56,6 +55,9 @@ import {
 } from "lucide-react";
 import "@xyflow/react/dist/style.css";
 import "./styles.css";
+import { TopicWorkbench } from "./review-ui.jsx";
+import { HistoryChanges } from "./history-changes.jsx";
+import { sourceName, objectName, readableText } from "./review-labels.js";
 
 let csrf = "";
 async function api(path, body) {
@@ -111,6 +113,7 @@ const actions = {
   delete_connection: "Bağlantı kaldırıldı",
   set_decision: "İnceleme kararı",
   set_coverage: "Kaynak eşleştirmesi",
+  set_topic_decision: "Konu hakkında gerekçeli karar",
   set_assumption: "Varsayım düzenlendi",
   add_finding: "Mühendis bulgusu",
   edit_finding: "Bulgu düzenlendi",
@@ -880,6 +883,7 @@ function SourceInspector({
   ].filter((o) =>
     o.evidence.some((e) => e.requirement_id === s.requirement_id),
   );
+  const relation = project.source_relations?.[s.requirement_id];
   const declared = [
     ...(c?.related_component_ids || []).map((id) => ({
       id,
@@ -890,18 +894,17 @@ function SourceInspector({
       kind: "connection",
     })),
   ];
-  const contextual = a.connections
-    .filter((e) => direct.some((o) => o.id === e.id))
-    .flatMap((e) => [e.source, e.target]);
-  const names = (id) =>
-    a.components.find((x) => x.id === id)?.name ||
-    a.connections.find((x) => x.id === id)?.protocol ||
-    id;
+  const contextual =
+    relation?.contextual_ids ||
+    a.connections
+      .filter((e) => direct.some((o) => o.id === e.id))
+      .flatMap((e) => [e.source, e.target]);
+  const names = (id) => objectName(project, id);
   return (
     <aside className="inspector">
       <div className="inspector-heading">
         <span className="eyebrow">KAYNAK İNCELEMESİ</span>
-        <h2>{loc(s) || "Kaynak kaydı"}</h2>
+        <h2>{sourceName(project, s.requirement_id)}</h2>
         <p className="muted">{s.section || "Belge bilgisi"}</p>
         <Badge>{coverageNames[c?.status] || "Sınıflandırılmamış"}</Badge>
       </div>
@@ -941,20 +944,24 @@ function SourceInspector({
       <div className="inspector-section">
         <div className="section-label">Kapsama kaydındaki eşleştirmeler</div>
         <p className="muted">{c?.notes || "Açıklama eklenmemiş."}</p>
-        {declared.map((o) => (
-          <button
-            className="list-link"
-            key={o.kind + o.id}
-            onClick={() => onSelect(o)}
-          >
-            <span>{names(o.id)}</span>
-            <Badge tone={direct.some((d) => d.id === o.id) ? "green" : "amber"}>
-              {direct.some((d) => d.id === o.id)
-                ? "Kanıt bağlı"
-                : "Kanıt bağı yok"}
-            </Badge>
-          </button>
-        ))}
+        {declared
+          .filter((o) => !relation || relation.direct_ids.includes(o.id))
+          .map((o) => (
+            <button
+              className="list-link"
+              key={o.kind + o.id}
+              onClick={() => onSelect(o)}
+            >
+              <span>{names(o.id)}</span>
+              <Badge
+                tone={direct.some((d) => d.id === o.id) ? "green" : "amber"}
+              >
+                {direct.some((d) => d.id === o.id)
+                  ? "Kanıt bağlı"
+                  : "Kanıt bağı yok"}
+              </Badge>
+            </button>
+          ))}
         {!declared.length && <p className="muted">Nesne seçilmemiş.</p>}
         <Button
           icon={Pencil}
@@ -966,17 +973,23 @@ function SourceInspector({
       </div>
       {contextual.length > 0 && (
         <div className="inspector-section">
-          <div className="section-label">
-            Bağlantı üzerinden ilgili bileşenler
-          </div>
+          <div className="section-label">Bağlamsal olarak ilgili öğeler</div>
           <p className="micro">
-            Uç bileşen ilişkisi, doğrudan kanıtla aynı şey değildir.
+            Bağlantının uçları ve mühendis tarafından seçilen bağlam ilişkileri
+            burada gösterilir. Bu ilişki doğrudan kanıt değildir.
           </p>
           <div className="chips">
             {[...new Set(contextual)].map((id) => (
               <button
                 key={id}
-                onClick={() => onSelect({ kind: "component", id })}
+                onClick={() =>
+                  onSelect({
+                    kind: a.components.some((c) => c.id === id)
+                      ? "component"
+                      : "connection",
+                    id,
+                  })
+                }
               >
                 {names(id)}
               </button>
@@ -1011,7 +1024,7 @@ function FindingInspector({
     <aside className="inspector">
       <div className="inspector-heading">
         <span className="eyebrow">MÜHENDİSLİK KONUSU · {f.id}</span>
-        <h2>{f.title}</h2>
+        <h2>{readableText(f.title, project)}</h2>
         <Button
           icon={Pencil}
           disabled={busy}
@@ -1042,12 +1055,15 @@ function FindingInspector({
         </div>
       </div>
       <div className="inspector-section">
-        <p>{f.description}</p>
+        <p>{readableText(f.description, project)}</p>
         <div className="notice blue">
           <Lightbulb size={16} />
           <div>
             <strong>Önerilen işlem</strong>
-            <p>{f.recommended_action || "Kaynakla birlikte değerlendirin."}</p>
+            <p>
+              {readableText(f.recommended_action, project) ||
+                "Kaynakla birlikte değerlendirin."}
+            </p>
           </div>
         </div>
         <p className="micro">
@@ -1072,7 +1088,7 @@ function FindingInspector({
               key={id}
               onClick={() => onSelect({ kind: "connection", id })}
             >
-              {id}
+              {objectName(project, id)}
             </button>
           ))}
         </div>
@@ -1358,8 +1374,8 @@ function EntityEditor({ modal, project, commit, onClose, busy }) {
 
 function CoverageEditor({ source, project, commit, onClose, busy }) {
   const a = project.state.architecture;
-  const [value, setValue] = useState(() =>
-    clone(
+  const [value, setValue] = useState(() => {
+    const v = clone(
       a.requirement_coverage.find(
         (c) => c.requirement_id === source.requirement_id,
       ) || {
@@ -1369,16 +1385,43 @@ function CoverageEditor({ source, project, commit, onClose, busy }) {
         related_connection_ids: [],
         notes: "",
       },
-    ),
-  );
+    );
+    const r = project.source_relations?.[source.requirement_id];
+    v.contextual_component_ids = [
+      ...new Set([
+        ...(v.contextual_component_ids || []),
+        ...(r?.inferred_ids || []),
+      ]),
+    ];
+    v.contextual_connection_ids ||= [];
+    v.related_component_ids = v.related_component_ids.filter(
+      (id) => !v.contextual_component_ids.includes(id),
+    );
+    return v;
+  });
   const [reason, setReason] = useState("");
-  const toggle = (key, id) =>
-    setValue((v) => ({
-      ...v,
-      [key]: v[key].includes(id)
-        ? v[key].filter((x) => x !== id)
-        : [...v[key], id],
-    }));
+  const setRelation = (kind, id, relation) =>
+    setValue((v) => {
+      const direct =
+        kind === "component"
+          ? "related_component_ids"
+          : "related_connection_ids";
+      const context =
+        kind === "component"
+          ? "contextual_component_ids"
+          : "contextual_connection_ids";
+      return {
+        ...v,
+        [direct]: [
+          ...v[direct].filter((x) => x !== id),
+          ...(relation === "direct" ? [id] : []),
+        ],
+        [context]: [
+          ...(v[context] || []).filter((x) => x !== id),
+          ...(relation === "context" ? [id] : []),
+        ],
+      };
+    });
   const derive = () =>
     setValue((v) => ({
       ...v,
@@ -1392,6 +1435,18 @@ function CoverageEditor({ source, project, commit, onClose, busy }) {
           c.evidence.some((e) => e.requirement_id === source.requirement_id),
         )
         .map((c) => c.id),
+      contextual_component_ids: v.contextual_component_ids.filter(
+        (id) =>
+          !a.components
+            .find((c) => c.id === id)
+            ?.evidence.some((e) => e.requirement_id === source.requirement_id),
+      ),
+      contextual_connection_ids: v.contextual_connection_ids.filter(
+        (id) =>
+          !a.connections
+            .find((c) => c.id === id)
+            ?.evidence.some((e) => e.requirement_id === source.requirement_id),
+      ),
     }));
   return (
     <Modal
@@ -1436,30 +1491,54 @@ function CoverageEditor({ source, project, commit, onClose, busy }) {
           </Button>
           <div className="form-grid checks">
             <div>
-              <h3>Bileşenler</h3>
+              <h3>Bileşen ilişkileri</h3>
               {a.components.map((c) => (
-                <label className="check" key={c.id}>
-                  <input
-                    type="checkbox"
-                    checked={value.related_component_ids.includes(c.id)}
-                    onChange={() => toggle("related_component_ids", c.id)}
-                  />
-                  {c.name}
+                <label className="relation-picker" key={c.id}>
+                  <span>{c.name}</span>
+                  <select
+                    aria-label={c.name + " kaynak ilişkisi"}
+                    value={
+                      value.related_component_ids.includes(c.id)
+                        ? "direct"
+                        : value.contextual_component_ids.includes(c.id)
+                          ? "context"
+                          : "none"
+                    }
+                    onChange={(e) =>
+                      setRelation("component", c.id, e.target.value)
+                    }
+                  >
+                    <option value="none">İlişki yok</option>
+                    <option value="direct">Doğrudan dayanak</option>
+                    <option value="context">Yalnız bağlam</option>
+                  </select>
                 </label>
               ))}
             </div>
             <div>
-              <h3>Bağlantılar</h3>
+              <h3>Bağlantı ilişkileri</h3>
               {a.connections.map((c) => (
-                <label className="check" key={c.id}>
-                  <input
-                    type="checkbox"
-                    checked={value.related_connection_ids.includes(c.id)}
-                    onChange={() => toggle("related_connection_ids", c.id)}
-                  />
-                  {a.components.find((n) => n.id === c.source)?.name} →{" "}
-                  {a.components.find((n) => n.id === c.target)?.name} (
-                  {c.protocol || types[c.type]})
+                <label className="relation-picker" key={c.id}>
+                  <span>
+                    {objectName(project, c.id)} ({c.protocol || types[c.type]})
+                  </span>
+                  <select
+                    aria-label={objectName(project, c.id) + " kaynak ilişkisi"}
+                    value={
+                      value.related_connection_ids.includes(c.id)
+                        ? "direct"
+                        : value.contextual_connection_ids.includes(c.id)
+                          ? "context"
+                          : "none"
+                    }
+                    onChange={(e) =>
+                      setRelation("connection", c.id, e.target.value)
+                    }
+                  >
+                    <option value="none">İlişki yok</option>
+                    <option value="direct">Doğrudan dayanak</option>
+                    <option value="context">Yalnız bağlam</option>
+                  </select>
                 </label>
               ))}
             </div>
@@ -2098,155 +2177,6 @@ function Explorer({ project, selection, onSelect }) {
   );
 }
 
-function ReviewView({ project, onSelect, onIssue, setModal }) {
-  const [filter, setFilter] = useState("findings");
-  const groups = Object.groupBy(
-    project.issues,
-    (i) => i.source_id || i.object_id || i.related_id || "general",
-  );
-  return (
-    <div className="content-page">
-      <div className="page-heading">
-        <div>
-          <span className="eyebrow">İNCELEME MASASI</span>
-          <h1>Sorunu anla, dayanağını gör, karar ver.</h1>
-          <p>
-            Modelin mühendislik bulguları ile yazılımın kayıt kontrolleri ayrı
-            değerlendirilir.
-          </p>
-        </div>
-        <Button icon={Plus} onClick={() => setModal({ type: "finding" })}>
-          Bulgu ekle
-        </Button>
-      </div>
-      <div className="segmented">
-        <button
-          className={filter === "findings" ? "active" : ""}
-          onClick={() => setFilter("findings")}
-        >
-          Mühendislik konuları <b>{project.state.analysis.findings.length}</b>
-        </button>
-        <button
-          className={filter === "checks" ? "active" : ""}
-          onClick={() => setFilter("checks")}
-        >
-          Otomatik kontroller <b>{project.issues.length}</b>
-        </button>
-      </div>
-      {filter === "findings" ? (
-        <div className="finding-grid">
-          {project.state.analysis.findings.map((f) => (
-            <article className="finding-card" key={f.id}>
-              <div className="inline spread">
-                <Badge
-                  tone={
-                    ["critical", "high"].includes(f.severity) ? "amber" : ""
-                  }
-                >
-                  {
-                    {
-                      high: "Yüksek öncelik",
-                      medium: "Orta öncelik",
-                      low: "Düşük öncelik",
-                      critical: "Kritik",
-                      info: "Bilgi",
-                    }[f.severity]
-                  }
-                </Badge>
-                <span className="micro">{f.id}</span>
-              </div>
-              <h2>{f.title}</h2>
-              <p>{f.description}</p>
-              <div className="suggestion">
-                <Lightbulb size={16} />
-                <span>{f.recommended_action || "Kaynağı inceleyin."}</span>
-              </div>
-              <div className="inline spread">
-                <DecisionBadge
-                  decision={project.state.decisions["finding:" + f.id]}
-                />
-                <Button
-                  icon={ArrowUpRight}
-                  onClick={() => onSelect({ kind: "finding", id: f.id })}
-                >
-                  İncele
-                </Button>
-              </div>
-            </article>
-          ))}
-          {!project.state.analysis.findings.length && (
-            <Empty title="Model bulgu bildirmemiş">
-              Bu, sorun bulunmadığının kanıtı değildir. Kendi gözlemini
-              ekleyebilirsin.
-            </Empty>
-          )}
-        </div>
-      ) : (
-        <>
-          <div className="notice blue">
-            <CircleHelp size={17} />
-            <p>
-              Bu kontroller kayıt tutarlılığını sınar. “Kanıt bağı yok”
-              bağlantının fiziksel olarak yanlış olduğu anlamına gelmez. Hata
-              ancak ilgili kayıt düzeldiğinde listeden kalkar.
-            </p>
-          </div>
-          {Object.entries(groups).map(([id, issues]) => {
-            const s = project.original.source_catalog.find(
-                (s) => s.requirement_id === id,
-              ),
-              o = [
-                ...project.state.architecture.components,
-                ...project.state.architecture.connections,
-              ].find((o) => o.id === id);
-            return (
-              <article className="check-group" key={id}>
-                <header>
-                  <div>
-                    <strong>{s ? loc(s) : o?.name || o?.label || id}</strong>
-                    {s && <p>{s.text}</p>}
-                  </div>
-                  <Badge tone="amber">{issues.length} kontrol</Badge>
-                </header>
-                {issues.map((i) => (
-                  <button
-                    key={i.key}
-                    className="check-row"
-                    onClick={() => onIssue(i)}
-                  >
-                    <AlertTriangle size={17} />
-                    <span>
-                      <strong>{i.title}</strong>
-                      <small>
-                        {i.object_id && (
-                          <>
-                            {project.state.architecture.components.find(
-                              (c) => c.id === i.object_id,
-                            )?.name || i.object_id}{" "}
-                            ·{" "}
-                          </>
-                        )}
-                        {i.explanation}
-                      </small>
-                      <em>{i.suggestion}</em>
-                    </span>
-                    <ArrowUpRight size={17} />
-                  </button>
-                ))}
-              </article>
-            );
-          })}
-          {!project.issues.length && (
-            <Empty icon={CheckCheck} title="Otomatik kayıt sorunu bulunmadı">
-              Mühendislik doğruluğu ve onay kararları ayrı değerlendirilir.
-            </Empty>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
 function SourcesView({ project, onSelect }) {
   return (
     <div className="content-page">
@@ -2394,7 +2324,7 @@ function AssumptionEditor({ modal, commit, onClose, busy }) {
   );
 }
 
-function HistoryView({ project }) {
+function HistoryView({ project, onSelect }) {
   return (
     <div className="content-page">
       <div className="page-heading">
@@ -2407,48 +2337,8 @@ function HistoryView({ project }) {
         </div>
         <Badge>Çalışma sürümü {project.version}</Badge>
       </div>
-      <div className="history-grid">
-        <section>
-          <h2>
-            <GitCompareArrows size={19} /> İlk model çıktısına göre farklar
-          </h2>
-          {!project.changes.length ? (
-            <div className="plain-card">
-              <p>Mimari nesneler ve eşleştirmeler ilk çıktıyla aynı.</p>
-              <small>
-                İnceleme kararları ve yerleşim değişiklikleri işlem geçmişinde
-                listelenir.
-              </small>
-            </div>
-          ) : (
-            project.changes.map((c) => (
-              <details className="diff-item" key={c.kind + c.id}>
-                <summary>
-                  <Badge tone={c.change === "removed" ? "red" : "teal"}>
-                    {
-                      {
-                        added: "Eklendi",
-                        removed: "Kaldırıldı",
-                        modified: "Değiştirildi",
-                      }[c.change]
-                    }
-                  </Badge>
-                  {c.after?.name || c.before?.name || c.id}
-                </summary>
-                <div className="diff-grid">
-                  <div>
-                    <strong>Önce</strong>
-                    <pre>{JSON.stringify(c.before, null, 2)}</pre>
-                  </div>
-                  <div>
-                    <strong>Şimdi</strong>
-                    <pre>{JSON.stringify(c.after, null, 2)}</pre>
-                  </div>
-                </div>
-              </details>
-            ))
-          )}
-        </section>
+      <HistoryChanges project={project} onSelect={onSelect} />
+      <div className="history-timeline">
         <section>
           <h2>
             <History size={19} /> İşlem geçmişi
@@ -2517,9 +2407,11 @@ function HelpDialog({ onClose }) {
           <div>
             <h3>Kararını kaydet</h3>
             <p>
-              Bulgu kabul / red / çözüldü kararlarını ve birleştirmeleri
-              gerekçesiyle kaydet. Mimari değişirse etkilenen eski kararlar
-              yeniden incelemeye açılır.
+              İnceleme bölümünde konuyu aç; kaynaklarını ve model / çalışma
+              kopyası farklarını karşılaştır. Gerekçeyle tamamla veya açık
+              bırak. Tamamlananlar ayrı görünür; ilgili dayanak değişince konu
+              yeniden incelemeye açılır. Otomatik kontrollerin ayrıntıları
+              korunur.
             </p>
           </div>
         </section>
@@ -2872,8 +2764,11 @@ function App() {
                     {label}
                     {k === "review" && (
                       <span className="nav-count">
-                        {project.issues.length +
-                          project.state.analysis.findings.length}
+                        {
+                          (project.topics || []).filter(
+                            (t) => t.status !== "completed",
+                          ).length
+                        }
                       </span>
                     )}
                   </button>
@@ -2937,7 +2832,11 @@ function App() {
                 className={project.issues.length ? "amber-text" : ""}
               >
                 <AlertTriangle size={14} />
-                {project.issues.length} otomatik kontrol kaydı
+                {
+                  (project.topics || []).filter((t) => t.status !== "completed")
+                    .length
+                }{" "}
+                incelenecek konu
               </button>
               <span className="context-model">
                 {project.original.run_metadata?.settings?.model ||
@@ -2985,14 +2884,14 @@ function App() {
             ) : view === "sources" ? (
               <SourcesView {...{ project }} onSelect={select} />
             ) : view === "review" ? (
-              <ReviewView
-                {...{ project, setModal, onIssue }}
+              <TopicWorkbench
+                {...{ project, setModal, onIssue, commit, busy, Modal }}
                 onSelect={select}
               />
             ) : view === "assumptions" ? (
               <AssumptionsView {...{ project, commit, busy, setModal }} />
             ) : (
-              <HistoryView project={project} />
+              <HistoryView project={project} onSelect={select} />
             )}
           </>
         ) : (

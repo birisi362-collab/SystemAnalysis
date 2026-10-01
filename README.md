@@ -11,11 +11,15 @@ Yeni ana arayüz React + React Flow, yerel servis FastAPI, inceleme kaydı SQLit
 geri al/yinele, değişiklik geçmişi ve çıktı paketi içerir. Streamlit bu arayüzün parçası değildir.
 
 Bu bilgisayarda **`run_app.bat`** dosyasını açın; uygulama `http://127.0.0.1:8766` adresinde çalışır.
-`run_ui.bat` de yeni uygulamayı başlatır. Hazır derleme `web/dist` içinde; kullanım için Node gerekmez.
+Hazır derleme `web/dist` içinde; kullanım için Node gerekmez.
 Yeni kurulumda: `python -m pip install -r requirements-workbench.txt`.
 Ardından: `python run_workbench.py`.
 
 **[Kullanım, teknoloji seçimi ve geliştirme notları](docs/MIMARI_ATOLYESI_TR.md)**
+
+Sürüm 1.2: sade konu listesi, üç adımlı konu ayrıntısı, anlaşılır kaynak etiketleri,
+doğrudan/bağlam ilişkileri, Geçmiş bölümünde değişiklik karşılaştırması, gerekçeli
+kapatma ve ilgili veri değişince yeniden inceleme. **[Yeni inceleme akışı](docs/INCELEME_AKISI_TR.md)**.
 
 ### GitHub'dan başka bilgisayarda devam etme
 

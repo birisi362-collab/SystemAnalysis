@@ -13,7 +13,7 @@ from .prompts import EXTRACTION_SYSTEM_PROMPT, ANALYSIS_SYSTEM_PROMPT, extractio
 from .validator import validate_architecture
 from .renderer import write_outputs
 
-PROMPT_VERSION='v6.1'
+PROMPT_VERSION='v6.2'
 
 def run(input_path,output_dir,llm,two_pass=True,progress=None,max_input_chars=60000):
     out=Path(output_dir);out.mkdir(parents=True,exist_ok=True)

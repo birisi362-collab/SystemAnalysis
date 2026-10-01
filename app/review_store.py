@@ -11,7 +11,9 @@ import uuid
 
 from .models import Component, Connection, Finding, FinalModel, RequirementCoverage
 from .requirement_catalog import RequirementEntry
-from .validator import validate_architecture, normalize, protocols
+from .validator import validate_architecture, normalize
+from .source_relations import source_relations
+from .review_topics import build_topics, source_labels
 
 
 def now():
@@ -27,6 +29,12 @@ class ConflictError(ValueError):
 
 
 ISSUE_TEXT = {
+    'DUPLICATE_SOURCE_ID': ('Kaynak numarası tekrarlanmış', 'Aynı kaynak numarası birden fazla kayıtta bulunuyor.', 'Özgün belge numaralarını ve çıkarılan kayıtları kontrol edin.'),
+    'DUPLICATE_COMPONENT_ID': ('Bileşen kimliği tekrarlanmış', 'İki bileşen aynı kalıcı kimlikle kaydedilmiş.', 'İçe aktarılan modelde bileşen kimliklerini benzersiz yapın.'),
+    'DUPLICATE_CONNECTION_ID': ('Bağlantı kimliği tekrarlanmış', 'İki bağlantı aynı kalıcı kimlikle kaydedilmiş.', 'İçe aktarılan modelde bağlantı kimliklerini benzersiz yapın.'),
+    'DUPLICATE_FINDING_ID': ('Konu kimliği tekrarlanmış', 'İki mühendislik konusu aynı kalıcı kimlikle kaydedilmiş.', 'İçe aktarılan bulgu kimliklerini benzersiz yapın.'),
+    'DUPLICATE_COVERAGE': ('Kaynak sınıflandırması tekrarlanmış', 'Aynı kaynak için birden fazla kapsama kaydı bulunuyor.', 'Kaynağın sınıflandırmasını tek kayıtta birleştirin.'),
+    'COVERAGE_CONTEXT_ONLY': ('Yalnız bağlam ilişkisi seçilmiş', 'Kaynağa ilgili nesneler eklenmiş ancak doğrudan doküman dayanağı yok.', 'Doğrudan destek varsa kanıt ekleyin; aksi halde kapsama durumunu yeniden değerlendirin.'),
     'COVERAGE_EVIDENCE_MISMATCH': ('Eşleştirme kanıt listesinde yok', 'Kaynak bu nesneyle ilişkilendirilmiş; nesnenin kanıt listesinde aynı kaynak bulunmuyor.', 'Gerçek destek varsa kanıt ekleyin; yalnızca bağlamsal bir ilişkiyse doğrudan eşleştirmeden çıkarın.'),
     'COVERAGE_WITHOUT_LINKS': ('Karşılık var denmiş, nesne seçilmemiş', 'Bu kaynağın şemada karşılığı olduğu belirtilmiş, ancak bileşen veya bağlantı seçilmemiş.', 'İlgili nesneyi seçin veya kaydı bağlam / eşleştirilmemiş olarak değerlendirin.'),
     'QUOTE_NOT_IN_SOURCE': ('Alıntı kaynakta bulunamadı', 'Gösterilen alıntı belirtilen kaynak metniyle eşleşmiyor.', 'Kaynak panelinden doğru cümleyi seçin; kendi kararınızı belge alıntısı gibi kaydetmeyin.'),
@@ -54,35 +62,20 @@ ISSUE_TEXT = {
 def enrich_issues(final):
     entries = [RequirementEntry(**s) for s in final.source_catalog]
     base = validate_architecture(final.architecture, entries, final.analysis)
-    issues = [i.model_dump() for i in base if i.code not in {'COVERAGE_EVIDENCE_MISMATCH', 'UNKNOWN_COMPONENT_REF', 'UNKNOWN_CONNECTION_REF'}]
+    issues = [i.model_dump() for i in base]
     objects = final.architecture.components + final.architecture.connections
     object_ids = {o.id for o in objects}
     finding_ids = {f.id for f in final.analysis.findings}
     sources = {s['requirement_id']: s for s in final.source_catalog}
-    for owner in list(final.architecture.requirement_coverage) + list(final.analysis.findings):
-        for field, present, code in [('related_component_ids', {c.id for c in final.architecture.components}, 'UNKNOWN_COMPONENT_REF'), ('related_connection_ids', {c.id for c in final.architecture.connections}, 'UNKNOWN_CONNECTION_REF')]:
-            for missing in set(getattr(owner, field)) - present:
-                issues.append(dict(code=code, severity='error', related_id=missing, finding_id=getattr(owner, 'id', None), source_id=getattr(owner, 'requirement_id', None), message=f'{missing}: referenced object does not exist.'))
-    for c in final.architecture.requirement_coverage:
-        if c.status not in ('covered', 'partially_covered'):
-            continue
-        for o in objects:
-            if o.id in c.related_component_ids + c.related_connection_ids and not any(e.requirement_id == c.requirement_id for e in o.evidence):
-                issues.append(dict(code='COVERAGE_EVIDENCE_MISMATCH', severity='error', related_id=c.requirement_id, source_id=c.requirement_id, object_id=o.id, message='Coverage link is not backed by the object evidence.'))
-    for edge in final.architecture.connections:
-        valid = [e for e in edge.evidence if e.requirement_id in sources and normalize(e.quote) and normalize(e.quote) in normalize(sources[e.requirement_id]['text'])]
-        if valid:
-            supported = set().union(*(protocols(e.quote) for e in valid))
-            if protocols(edge.protocol) - supported and not any(i['code'] == 'PROTOCOL_MISMATCH' and i['related_id'] == edge.id for i in issues):
-                issues.append(dict(code='PROTOCOL_NOT_SUPPORTED', severity='warning', related_id=edge.id, message='Declared technology is absent from verified quotes.'))
-    for i, issue in enumerate(issues):
-        issue.setdefault('finding_id', issue.get('related_id') if issue.get('related_id') in finding_ids else None)
-        issue.setdefault('source_id', issue.get('related_id') if issue.get('related_id') in sources else None)
-        issue.setdefault('object_id', issue.get('related_id') if issue.get('related_id') in object_ids else None)
-        issue['key'] = f"{issue['code']}:{issue.get('source_id')}:{issue.get('object_id')}:{i}"
+    for issue in issues:
+        issue['finding_id'] = issue.get('finding_id') or (issue.get('related_id') if issue.get('related_id') in finding_ids else None)
+        issue['source_id'] = issue.get('source_id') or (issue.get('related_id') if issue.get('related_id') in sources else None)
+        issue['object_id'] = issue.get('object_id') or (issue.get('related_id') if issue.get('related_id') in object_ids else None)
+        identity = {k:issue.get(k) for k in ('code','source_id','object_id','finding_id','related_id','message')}
+        issue['key'] = hashlib.sha256(dump(identity).encode()).hexdigest()[:24]
         text = ISSUE_TEXT.get(issue['code'], ('Kayıt bütünlüğünü kontrol edin', issue.get('message', ''), 'İlişkili kaynak ve nesne kimliklerini inceleyin.'))
         issue.update(title=text[0], explanation=text[1], suggestion=text[2])
-    return issues
+    return sorted(issues, key=lambda i:i['key'])
 
 
 def changes_between(original, state):
@@ -158,7 +151,10 @@ class ReviewStore:
             events = [dict(r) for r in db.execute('SELECT action,actor,reason,at,revision FROM events WHERE project_id=? ORDER BY id DESC', (pid,))]
         original = json.loads(row['original'])
         final = FinalModel.model_validate({**original, 'architecture': state['architecture'], 'analysis': state['analysis']})
-        return dict(id=pid, name=row['name'], origin_path=row['origin_path'], origin_hash=row['origin_hash'], version=row['version'], current_revision=row['current'], created=row['created'], updated=row['updated'], original=original, state=state, issues=enrich_issues(final), history=events, can_undo=revision['parent'] is not None, can_redo=bool(json.loads(row['redo'])), changes=changes_between(original, state))
+        issues = enrich_issues(final)
+        topics = build_topics(final, issues, state['decisions'])
+        relations = {s['requirement_id']:source_relations(final.architecture,s['requirement_id']) for s in final.source_catalog}
+        return dict(id=pid, name=row['name'], origin_path=row['origin_path'], origin_hash=row['origin_hash'], version=row['version'], current_revision=row['current'], created=row['created'], updated=row['updated'], original=original, state=state, issues=issues, topics=topics, source_labels=source_labels(final.source_catalog), source_relations=relations, history=events, can_undo=revision['parent'] is not None, can_redo=bool(json.loads(row['redo'])), changes=changes_between(original, state))
 
     def mutate(self, pid, command):
         actor = command.get('actor', '').strip()
@@ -202,6 +198,8 @@ class ReviewStore:
         value = command.get('value', {})
         key = command.get('id', '')
         arch = state['architecture']
+        before_final = FinalModel.model_validate({**original,'architecture':arch,'analysis':state['analysis']})
+        before_topics = build_topics(before_final,enrich_issues(before_final),state['decisions'])
         sources = {s['requirement_id']: s for s in original['source_catalog']}
         components = {x['id'] for x in arch['components']}
         connections = {x['id'] for x in arch['connections']}
@@ -260,6 +258,8 @@ class ReviewStore:
                 cov['related_connection_ids'] = [x for x in cov['related_connection_ids'] if x not in removed_edges]
                 if action == 'delete_component':
                     cov['related_component_ids'] = [x for x in cov['related_component_ids'] if x != key]
+                cov['contextual_connection_ids'] = [x for x in cov.get('contextual_connection_ids', []) if x not in removed_edges]
+                cov['contextual_component_ids'] = [x for x in cov.get('contextual_component_ids', []) if x != key or action != 'delete_component']
                 if cov != before:
                     affected.add('source:' + cov['requirement_id'])
                     if cov['status'] in ('covered', 'partially_covered') and not cov['related_component_ids'] + cov['related_connection_ids']:
@@ -270,12 +270,40 @@ class ReviewStore:
             cov = RequirementCoverage.model_validate(value).model_dump()
             if cov['requirement_id'] not in sources:
                 raise ValueError('Kaynak katalogda bulunmuyor.')
-            if set(cov['related_component_ids']) - components or set(cov['related_connection_ids']) - connections:
+            if set(cov['related_component_ids'] + cov['contextual_component_ids']) - components or set(cov['related_connection_ids'] + cov['contextual_connection_ids']) - connections:
                 raise ValueError('Eşleştirmede bulunmayan nesne seçilmiş.')
-            if len(set(cov['related_component_ids'])) != len(cov['related_component_ids']) or len(set(cov['related_connection_ids'])) != len(cov['related_connection_ids']):
+            if any(len(set(cov[f])) != len(cov[f]) for f in ('related_component_ids','related_connection_ids','contextual_component_ids','contextual_connection_ids')):
                 raise ValueError('Aynı nesne bir kez seçilmeli.')
+            if set(cov['related_component_ids']) & set(cov['contextual_component_ids']) or set(cov['related_connection_ids']) & set(cov['contextual_connection_ids']):
+                raise ValueError('Bir öğe için doğrudan dayanak veya bağlam ilişkilerinden birini seçin.')
             arch['requirement_coverage'] = [c for c in arch['requirement_coverage'] if c['requirement_id'] != cov['requirement_id']] + [cov]
             affected.add('source:' + cov['requirement_id'])
+        elif action == 'set_topic_decision':
+            final = FinalModel.model_validate({**original, 'architecture':arch, 'analysis':state['analysis']})
+            topics = build_topics(final, enrich_issues(final), state['decisions'])
+            topic = next((t for t in topics if t['id']==key), None)
+            if not topic:
+                raise ValueError('İncelenecek konu bulunamadı. Listeyi yenileyin.')
+            status = value.get('status')
+            if status not in ('resolved','accepted','needs_review','merged','waiting'):
+                raise ValueError('Geçersiz konu kararı.')
+            target = value.get('merged_into') if status=='merged' else None
+            if status=='merged':
+                if not topic['finding_id']:
+                    raise ValueError('Otomatik kayıt kontrolü başka bulguyla birleştirilemez.')
+                other=next((t for t in topics if t['id']==target and t['finding_id']),None)
+                if not other or target==key:
+                    raise ValueError('Başka bir mühendislik konusu seçin.')
+                seen={key}; cursor=target
+                while cursor:
+                    if cursor in seen: raise ValueError('Döngüsel konu birleştirme yapılamaz.')
+                    seen.add(cursor)
+                    cursor=state['decisions'].get('topic:'+cursor,{}).get('merged_into')
+            snapshot={k:v for k,v in topic.items() if k not in ('decision',)}
+            state['decisions']['topic:'+key]=dict(status=status, note=command['reason'], actor=command['actor'], at=now(), stale=False, fingerprint=topic['fingerprint'], snapshot=snapshot, merged_into=target)
+            # Calculate the newly selected merge dependency, including any target chain.
+            updated=next(t for t in build_topics(final,enrich_issues(final),state['decisions']) if t['id']==key)
+            state['decisions']['topic:'+key]['fingerprint']=updated['fingerprint']
         elif action == 'set_decision':
             kind, _, oid = key.partition(':')
             valid = {'component': components, 'connection': connections, 'source': set(sources), 'finding': {f['id'] for f in state['analysis']['findings']}, 'assumption': {str(i) for i, _ in enumerate(arch['assumptions'])}}
@@ -339,6 +367,22 @@ class ReviewStore:
             if decision_key in state['decisions']:
                 state['decisions'][decision_key]['stale'] = True
                 state['decisions'][decision_key]['stale_reason'] = 'İlişkili mimari veya dayanak değişti; önceki kararı yeniden değerlendirin.'
+        # Topic decisions track only their own dependencies; unrelated edits do not reopen them.
+        final = FinalModel.model_validate({**original,'architecture':arch,'analysis':state['analysis']})
+        current_topics = build_topics(final,enrich_issues(final),state['decisions'])
+        active_ids = {t['id'] for t in current_topics if t['active']}
+        for previous in before_topics:
+            key_for_topic = 'topic:'+previous['id']
+            if previous['active'] and previous['kind'] != 'engineering' and previous['id'] not in active_ids and key_for_topic not in state['decisions']:
+                # A fix clears a check; retain the engineering edit reason in completed work.
+                snapshot={k:v for k,v in previous.items() if k != 'decision'}
+                state['decisions'][key_for_topic]=dict(status='resolved', note=command['reason'], actor=command['actor'], at=now(), stale=False, fingerprint=previous['fingerprint'], snapshot=snapshot, auto_completed=True, merged_into=None)
+        for topic in build_topics(final,enrich_issues(final),state['decisions']):
+            decision_key='topic:'+topic['id']
+            if decision_key in state['decisions']:
+                state['decisions'][decision_key]['stale']=bool(topic['decision'].get('stale')) if topic['active'] else False
+                if topic['active'] and topic['decision'].get('stale'):
+                    state['decisions'][decision_key]['stale_reason']=topic['decision']['stale_reason']
         return state
 
     def save_job(self, payload):

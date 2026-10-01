@@ -41,6 +41,8 @@ class RequirementCoverage(BaseModel):
     status: Literal["covered", "partially_covered", "unmapped", "not_architectural"]
     related_component_ids: List[str] = Field(default_factory=list)
     related_connection_ids: List[str] = Field(default_factory=list)
+    contextual_component_ids: List[str] = Field(default_factory=list)
+    contextual_connection_ids: List[str] = Field(default_factory=list)
     notes: Optional[str] = None
 
 
@@ -92,6 +94,9 @@ class ValidationIssue(BaseModel):
     code: str
     message: str
     related_id: Optional[str] = None
+    source_id: Optional[str] = None
+    object_id: Optional[str] = None
+    finding_id: Optional[str] = None
 
 
 class FinalModel(BaseModel):
@@ -104,4 +109,3 @@ class FinalModel(BaseModel):
     architecture: ArchitectureModel
     analysis: AnalysisResult
     validation_issues: List[ValidationIssue] = Field(default_factory=list)
-

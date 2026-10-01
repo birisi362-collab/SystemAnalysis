@@ -35,6 +35,10 @@ CORE RULES
 12. A requirement about a displayed output, data product, or behavior can imply a missing interface; do not
     invent that interface, record it through analysis in the second pass.
 13. Requirement coverage must distinguish architectural requirements from non-architectural/context text.
+14. related_component_ids and related_connection_ids are DIRECT documentary support links:
+    each selected object must cite this requirement in its evidence. Connection endpoints alone
+    are contextual, not direct evidence for a component. Put context-only links in
+    contextual_component_ids or contextual_connection_ids instead. Context alone cannot establish covered status.
 
 IMPORTANT TECHNICAL DISCIPLINE
 - Treat interface technology literally. LVDS, for example, should not be treated as an analog interface.
@@ -118,6 +122,8 @@ Then return ONLY valid JSON with this structure:
       "status": "covered|partially_covered|unmapped|not_architectural",
       "related_component_ids": ["..."],
       "related_connection_ids": ["..."],
+      "contextual_component_ids": [],
+      "contextual_connection_ids": [],
       "notes": "short reason"
     }}
   ],

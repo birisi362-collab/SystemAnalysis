@@ -1,11 +1,13 @@
 # Mimari Atölyesi
 
 Gereksinim dokümanından çıkarılan mimariyi, dayanağını kaybetmeden incelemek ve düzeltmek için yerel uygulama.
+**Sürüm 1.2:** sade konu listesi, üç adımlı konu ayrıntısı, doğrudan/bağlam ilişkileri, Geçmiş bölümünde değişiklik karşılaştırması ve gerekçeli kapatma eklendi. Güncel kullanım: [Mühendis inceleme akışı](INCELEME_AKISI_TR.md).
+
 Yeni arayüzde düzenlemeler Python analiz motoruna bağlanır; SQLite'a kaydedilir ve sonraki açılışta korunur.
 
 ## Başlatma
 
-Bu klasörde `run_app.bat` dosyasına çift tıklayın. `run_ui.bat` aynı uygulamayı açar.
+Bu klasörde `run_app.bat` dosyasına çift tıklayın.
 Adres: **http://127.0.0.1:8766**. Başlatıcı pencere açık kalmalı; Ctrl+C uygulamayı durdurur.
 Port kullanımdaysa açık uygulamayı kullanın veya `venv\Scripts\python.exe run_workbench.py --port 8768` çalıştırın.
 
@@ -45,15 +47,12 @@ Blokları sürükleyerek yerleştirebilirsiniz. Alt tutamaçtan başka bloğun �
 
 **Kaynak → Eşleştirmeyi düzenle** ekranında gerçek doğrudan ilişkileri seçin. **Seçimleri mevcut kanıtlardan getir**, eldeki kanıt bağlantılarını forma taşır; kaydetmez, kapsam durumunu veya onay kararını kendisi vermez. Doğrudan dayanak gerçekten varsa bunun yerine nesneye doğru alıntıyı ekleyebilirsiniz. Uç bileşenler ayrıca bağlamsal ilişki olarak görünür.
 
-İlk Nemotron incelemesinde 19 böyle uyuşmazlık ve 1 nesnesiz `covered` kaydı vardır. Bunlar uygulama tarafından gizlenmez. İlgili kayıt değişince kontroller yeniden hesaplanır.
+İlk Nemotron çıktısında 19 uyuşmazlık ve 1 nesnesiz `covered` kaydı vardır. Güncel kurallar 15 bağlantı ucu ilişkisini bağlam olarak ayırır; 4 doğrudan dayanak uyuşmazlığı ve 1 nesnesiz kayıt görünür kalır. İlgili kayıt değişince kontroller yeniden hesaplanır.
 Dokümanda olmayan alıntı kaydedilemez. Kanıtsız bir mühendislik eklemesi yapılabilir; dayanak eksikliği ve mühendis gerekçesi görünür kalır.
 
 ## Bulgular, öneriler ve müdahale
 
-**İnceleme** bölümünde iki ayrı liste vardır:
-
-- **Mühendislik konuları:** modelin bulgusu, ilgili kaynak ve nesneler, önerilen işlem. Mühendis bulgu ekleyebilir veya mevcut bulgunun metnini, önemini, dayanağını ve ilişkilerini düzenleyebilir; kabul, ret, çözüldü veya başka bulguyla birleştirildi kararı verebilir. İlk bulgu orijinal kayıtta korunur.
-- **Otomatik kontroller:** yazılımın kayıt/alıntı/protokol kontrolleri. Her kayıt açıklama ve düzeltme önerisiyle ilişkilendirilir. Bir bulguya “çözüldü” demek bu kontrolleri gizlemez.
+**İnceleme** bölümünde model önerileri ile otomatik kayıtlar tek konu listesinde toplanır. Konuyu açarak önce soruyu, sonra kaynak cümlesini ve ilgili şema parçasını inceleyin; öğeyi aynı akış içinde düzenleyip gerekçeyle kapatın. İlk model çıktısından sonraki alan değişiklikleri **Geçmiş → Değişiklikleri gör** bölümünde karşılaştırılır. **Bekleyenler**, **Açıklama bekleyenler** ve **Tamamlananlar** görünümleri kararları takip eder. Ayrıntılı otomatik kontrol kaydı açılabilir; gerekçeli kapatma teknik kontrolü silmez. İlgili dayanak değişirse konu yeniden açılır.
 
 **Varsayımlar** bölümünde varsayım metinleri düzenlenebilir ve ayrı karar verilebilir. Modelin açık soruları ve eksik bilgi listesi de gösterilir.
 Mimari veya dayanak değişince etkilenmiş kararlar **Yeniden incelenmeli** olur. Mimari değişikliği, ilişkisi eksik olabilecek model bulgularına verilmiş kararları da yeniden incelemeye düşürür. Otomatik anlamsal yeniden değerlendirme veya ikinci model çağrısı yapılmaz.
@@ -85,7 +84,7 @@ API anahtarı mevcut `.env` dosyasından veya o analiz için formdan alınır. F
 |---|---|
 | React + React Flow | Seçildi. Özelleştirilebilir bileşenler, tıklanabilir kenarlar, tutamaçla bağlama, sürükleme, yakınlaştırma ve yerleşim saklama ihtiyaçlarına uygun. |
 | Cytoscape.js | Güçlü grafik analizi ve yerleşim seçenekleri var. Bu uygulamanın form ve mühendis kararlarıyla bütünleşen görsel düzenleme ihtiyacı için React Flow tercih edildi. |
-| Streamlit | İlk analiz ekranı korunuyor; yeni etkileşimli çalışma alanı React ile ayrı geliştirildi. |
+| Streamlit | Yerini React ile etkileşimli çalışma alanına bıraktı. |
 
 Karar resmi belgelerdeki yeteneklere dayanır: [React Flow özel düğümler](https://reactflow.dev/learn/customization/custom-nodes), [tutamaçlar](https://reactflow.dev/learn/customization/handles), [kaydet/geri yükle örneği](https://reactflow.dev/examples/interaction/save-and-restore), [MIT lisanslı kaynak kodu](https://github.com/xyflow/xyflow), [Cytoscape.js](https://js.cytoscape.org/).
 Python motorunu korumak ve derlenmiş arayüzü aynı yerel adresten sunmak için [FastAPI](https://fastapi.tiangolo.com/tutorial/static-files/) kullanıldı.
@@ -109,7 +108,7 @@ npm run build
 ```
 
 Geliştirmede Python sunucusunu çalıştırın; `web` içinde `npm run dev` kullanın. Vite `/api` isteklerini 8766'ya yönlendirir.
-Tüm eski ve yeni testler için `requirements.txt` kurulmalı ve `run_tests.bat` çalıştırılmalıdır; Streamlit yalnız eski arayüz regresyon testi içindir.
+Tüm eski ve yeni testler için `requirements.txt` kurulmalı ve `run_tests.bat` çalıştırılmalıdır; Eski Streamlit başlatıcıları kaldırılmıştır.
 
 ## Plandaki yerimiz ve kapsam
 

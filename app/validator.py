@@ -3,6 +3,7 @@ import re
 import unicodedata
 from collections import Counter
 from .models import ArchitectureModel, AnalysisResult, ValidationIssue
+from .source_relations import source_relations
 
 PATTERNS = {
     'RS-422': r'\bRS[ -]?422\b', 'RS-485': r'\bRS[ -]?485\b',
@@ -24,16 +25,18 @@ def protocols(text):
 def validate_architecture(architecture: ArchitectureModel, entries, analysis: AnalysisResult | None = None):
     issues = []; sources = {e.requirement_id: e for e in entries}
     cs = {c.id for c in architecture.components}; es = {c.id for c in architecture.connections}
-    def add(code, message, rid=None, severity='error'):
-        issues.append(ValidationIssue(code=code, message=message, related_id=rid, severity=severity))
+    def add(code, message, rid=None, severity='error', source_id=None, object_id=None, finding_id=None):
+        issues.append(ValidationIssue(code=code, message=message, related_id=rid, severity=severity,
+            source_id=source_id, object_id=object_id, finding_id=finding_id))
     def duplicates(ids, code):
         for rid, n in Counter(ids).items():
             if n > 1: add(code, f'{rid}: {n} occurrences.', rid)
     def refs(obj):
-        for rid in obj.related_component_ids:
-            if rid not in cs: add('UNKNOWN_COMPONENT_REF', f'{rid}: referenced component does not exist.', rid)
-        for rid in obj.related_connection_ids:
-            if rid not in es: add('UNKNOWN_CONNECTION_REF', f'{rid}: referenced connection does not exist.', rid)
+        owner = dict(source_id=getattr(obj, 'requirement_id', None), finding_id=getattr(obj, 'id', None))
+        for rid in set(obj.related_component_ids + getattr(obj, 'contextual_component_ids', [])):
+            if rid not in cs: add('UNKNOWN_COMPONENT_REF', f'{rid}: referenced component does not exist.', rid, **owner)
+        for rid in set(obj.related_connection_ids + getattr(obj, 'contextual_connection_ids', [])):
+            if rid not in es: add('UNKNOWN_CONNECTION_REF', f'{rid}: referenced connection does not exist.', rid, **owner)
     def evidence(obj):
         valid = []
         if not obj.evidence: add('MISSING_EVIDENCE', 'No supporting source was provided.', obj.id)
@@ -66,9 +69,11 @@ def validate_architecture(architecture: ArchitectureModel, entries, analysis: An
         if quote_protocols and not conn.protocol:
             add('EXPLICIT_PROTOCOL_NOT_CAPTURED', f'Quote names {sorted(quote_protocols)}, protocol is empty.', conn.id)
         elif quote_protocols and not (quote_protocols & declared):
-            add('PROTOCOL_MISMATCH', 'Declared protocol does not match any known protocol in the verified quote.', conn.id)
+            add('PROTOCOL_MISMATCH', 'Declared protocol does not match any known protocol in the verified quote.', conn.id, 'warning')
         elif quote_protocols - declared:
             add('PROTOCOL_REVIEW_REQUIRED', 'Quote contains additional technologies; check whether they apply to this connection.', conn.id, 'warning')
+        if valid and declared - quote_protocols and not (quote_protocols and not (quote_protocols & declared)):
+            add('PROTOCOL_NOT_SUPPORTED', 'Declared technology is absent from verified quotes.', conn.id, 'warning')
         source_protocols = set().union(*(protocols(sources[ev.requirement_id].text) for ev in valid)) if valid else set()
         if source_protocols and not quote_protocols:
             add('PROTOCOL_SOURCE_REVIEW', 'Source names a technology omitted from the selected quote; check its applicability.', conn.id, 'warning')
@@ -81,12 +86,15 @@ def validate_architecture(architecture: ArchitectureModel, entries, analysis: An
         refs(item)
         if item.requirement_id not in sources: add('UNKNOWN_COVERAGE_REQUIREMENT', 'Coverage cites unknown source.', item.requirement_id)
         if item.status in ('covered', 'partially_covered'):
-            if not item.related_component_ids and not item.related_connection_ids:
+            if not item.related_component_ids and not item.related_connection_ids and not item.contextual_component_ids and not item.contextual_connection_ids:
                 add('COVERAGE_WITHOUT_LINKS', 'Covered source has no related objects.', item.requirement_id)
-            objects = [x for x in architecture.components if x.id in item.related_component_ids] + [x for x in architecture.connections if x.id in item.related_connection_ids]
+            relations = source_relations(architecture, item.requirement_id)
+            objects = [x for x in architecture.components + architecture.connections if x.id in relations['direct_ids']]
             for obj in objects:
                 if not any(e.requirement_id == item.requirement_id for e in obj.evidence):
-                    add('COVERAGE_EVIDENCE_MISMATCH', 'Coverage link is not backed by the object evidence.', item.requirement_id)
+                    add('COVERAGE_EVIDENCE_MISMATCH', 'Direct coverage link is not backed by the object evidence.', item.requirement_id, 'warning', source_id=item.requirement_id, object_id=obj.id)
+            if not objects and relations['explicit_context_ids'] and not relations['evidence_ids']:
+                add('COVERAGE_CONTEXT_ONLY', 'Covered source has context links but no direct documentary support.', item.requirement_id, 'warning', source_id=item.requirement_id)
     for rid in sources:
         if rid not in coverage: add('MISSING_COVERAGE', 'No coverage classification.', rid, 'warning')
         elif coverage[rid].status == 'unmapped': add('UNMAPPED_REQUIREMENT', 'Source is explicitly unmapped.', rid, 'warning')

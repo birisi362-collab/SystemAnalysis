@@ -156,14 +156,15 @@ class StoreTests(unittest.TestCase):
         with self.assertRaises(ValueError):self.apply('edit_finding','f_note',changed)
 
     @unittest.skipUnless(NEMOTRON.exists(),'Recorded Nemotron run is not in this checkout')
-    def test_nemotron_mismatches_are_expanded_without_hiding_errors(self):
+    def test_nemotron_endpoint_context_is_distinguished_from_direct_evidence(self):
         final=FinalModel.model_validate_json((NEMOTRON/'analysis_result.json').read_bytes())
         issues=enrich_issues(final)
         mismatches=[i for i in issues if i['code']=='COVERAGE_EVIDENCE_MISMATCH']
-        self.assertEqual(len(mismatches),19)
-        self.assertEqual(len(issues),20)
+        self.assertEqual(len(mismatches),4)
+        self.assertEqual(len(issues),5)
+        self.assertTrue(any(i['code']=='COVERAGE_WITHOUT_LINKS' for i in issues))
         self.assertTrue(all(i['object_id'] and i['source_id'] for i in mismatches))
-        self.assertTrue(all(not i['object_id'].startswith('if_') for i in mismatches))
+        self.assertEqual(len(final.validation_issues),20)  # Original run stays intact.
 
 
 class ApiTests(unittest.TestCase):
@@ -211,6 +212,21 @@ class ApiTests(unittest.TestCase):
         cmd=dict(version=0,action='set_decision',id='component:'+c['id'],value={'status':'approved'},actor='Mühendis',reason='İncelendi')
         self.assertEqual(self.client.post('/api/projects/'+p['id']+'/changes',json=cmd,headers=self.headers).status_code,200)
         self.assertEqual(self.client.post('/api/projects/'+p['id']+'/changes',json=cmd,headers=self.headers).status_code,409)
+
+    def test_topic_closure_and_export_keep_reason_and_raw_check(self):
+        p=self.client.post('/api/projects/import',json={'path':str(self.source)},headers=self.headers).json()
+        endpoint='/api/projects/'+p['id']+'/changes'
+        p=self.client.post(endpoint,json=dict(version=p['version'],action='upsert_component',value=dict(id='manual',name='Yeni tasarım',category='system',evidence=[]),actor='Mühendis',reason='Mühendislik ilavesi'),headers=self.headers).json()
+        topic=next(t for t in p['topics'] if t['object_ids']==['manual'])
+        response=self.client.post(endpoint,json=dict(version=p['version'],action='set_topic_decision',id=topic['id'],value={'status':'accepted'},actor='Mühendis',reason='Belge dışı tasarım kararını gerekçesiyle kabul ettim'),headers=self.headers)
+        self.assertEqual(response.status_code,200,response.text)
+        exported=self.client.get('/api/projects/'+p['id']+'/export')
+        with zipfile.ZipFile(io.BytesIO(exported.content)) as archive:
+            review=json.loads(archive.read('engineering_review.json'))
+            t=next(t for t in review['topics'] if t['id']==topic['id'])
+            self.assertEqual(t['status'],'completed')
+            self.assertIn('Belge dışı',t['decision']['note'])
+            self.assertTrue(any(i['code']=='MISSING_EVIDENCE' and i['object_id']=='manual' for i in review['issues']))
 
 
 if __name__=='__main__':unittest.main()
