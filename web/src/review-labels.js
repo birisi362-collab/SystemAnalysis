@@ -9,7 +9,7 @@ export function objectName(project, id, original = false) {
   if (c) return c.name;
   const e = a.connections.find((x) => x.id === id);
   return e
-    ? `${a.components.find((c) => c.id === e.source)?.name || "Kaldırılmış başlangıç"} → ${a.components.find((c) => c.id === e.target)?.name || "Kaldırılmış hedef"}`
+    ? `${a.components.find((c) => c.id === e.source)?.name || "Kaldırılmış başlangıç"} ${e.direction === "bidirectional" ? "↔" : "→"} ${a.components.find((c) => c.id === e.target)?.name || "Kaldırılmış hedef"}`
     : "Kaldırılmış öğe";
 }
 export function readableText(text, project) {

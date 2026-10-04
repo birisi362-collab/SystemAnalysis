@@ -86,45 +86,38 @@ class TopicWorkflowTests(unittest.TestCase):
         with self.assertRaises(ValueError):self.change('set_topic_decision',self.finding_topic()['id'],{'status':'resolved'},' ')
         with self.assertRaises(ValueError):self.change('set_topic_decision','ghost',{'status':'resolved'})
 
-    def test_completed_automatic_topic_keeps_visible_check(self):
-        topic=next(t for t in self.p['topics'] if t['object_ids']==['C'])
-        self.change('set_topic_decision',topic['id'],{'status':'accepted'})
-        self.assertTrue(any(i['code']=='MISSING_EVIDENCE' and i['object_id']=='C' for i in self.p['issues']))
-        self.assertEqual(next(t for t in self.p['topics'] if t['id']==topic['id'])['status'],'completed')
+    def test_optional_sources_do_not_create_engineering_tasks(self):
+        self.assertEqual(self.p['issues'],[])
+        self.assertEqual([t['finding_id'] for t in self.p['topics']],['F1'])
 
-    def test_fixed_check_is_archived_and_reappearance_reopens(self):
-        topic=next(t for t in self.p['topics'] if t['object_ids']==['C'])
-        self.change('set_topic_decision',topic['id'],{'status':'resolved'})
+    def test_adding_and_removing_unrelated_source_keeps_closed_finding(self):
+        self.close()
         c=copy.deepcopy(self.p['state']['architecture']['components'][-1]);c['evidence']=copy.deepcopy(self.p['state']['architecture']['components'][0]['evidence'])
         self.change('upsert_component','C',c)
-        t=next(t for t in self.p['topics'] if t['id']==topic['id'])
-        self.assertFalse(t['active']);self.assertEqual(t['status'],'completed')
+        self.assertEqual(self.finding_topic()['status'],'completed')
         c['evidence']=[];c['description']='Yeni kanıtsız durum'
         self.change('upsert_component','C',c)
-        self.assertEqual(next(t for t in self.p['topics'] if t['id']==topic['id'])['status'],'reopened')
+        self.assertEqual(self.finding_topic()['status'],'completed')
+        self.assertEqual(len(self.p['topics']),1)
 
-    def test_fix_without_prior_closure_retains_engineering_reason_in_completed(self):
-        topic=next(t for t in self.p['topics'] if t['object_ids']==['C'])
+    def test_source_edit_has_history_without_creating_a_task(self):
         c=copy.deepcopy(self.p['state']['architecture']['components'][-1]);c['evidence']=copy.deepcopy(self.p['state']['architecture']['components'][0]['evidence'])
         self.change('upsert_component','C',c,'Doğru kaynak alıntısını ekledim')
-        t=next(t for t in self.p['topics'] if t['id']==topic['id'])
-        self.assertEqual(t['status'],'completed');self.assertFalse(t['active'])
-        self.assertTrue(t['decision']['auto_completed'])
-        self.assertEqual(t['decision']['note'],'Doğru kaynak alıntısını ekledim')
+        self.assertEqual(len(self.p['topics']),1)
+        self.assertEqual(self.p['history'][0]['reason'],'Doğru kaynak alıntısını ekledim')
 
     def test_topic_ids_do_not_depend_on_list_order(self):
         before={t['id'] for t in self.p['topics']}
         self.change('layout',value={'A':{'x':10,'y':20}})
         self.assertEqual(before,{t['id'] for t in self.p['topics']})
 
-    def test_context_only_links_cannot_claim_direct_coverage(self):
+    def test_legacy_coverage_does_not_create_tasks_or_reopen_findings(self):
+        self.close()
         cov=dict(requirement_id='G-01',status='covered',related_component_ids=[],related_connection_ids=[],contextual_component_ids=['C'])
-        # Existing direct evidence can legitimately support the source separately.
         self.change('set_coverage',value=cov)
-        self.assertIn('C',self.p['source_relations']['G-01']['explicit_context_ids'])
-        self.assertNotIn('C',self.p['source_relations']['G-01']['direct_ids'])
-        cov['related_component_ids']=['C']
-        with self.assertRaises(ValueError):self.change('set_coverage',value=cov)
+        self.assertNotIn('source_relations',self.p)
+        self.assertEqual(self.finding_topic()['status'],'completed')
+        self.assertEqual(self.p['issues'],[])
 
     def test_duplicate_findings_merge_and_target_edit_reopens(self):
         f=copy.deepcopy(self.p['state']['analysis']['findings'][0]);f['id']='F2'
@@ -149,7 +142,7 @@ class RelationRulesTests(unittest.TestCase):
         d['architecture']['requirement_coverage'][0]['related_component_ids'].append('C')
         self.assertTrue(any(i['code']=='COVERAGE_EVIDENCE_MISMATCH' and i['object_id']=='C' for i in enrich_issues(FinalModel.model_validate(d))))
 
-    def test_many_coverage_rows_share_one_topic_without_losing_checks(self):
+    def test_legacy_coverage_checks_never_become_workspace_tasks(self):
         d=baseline()
         d['architecture']['components'].append(dict(id='C',name='C',category='system',evidence=[]))
         d['architecture']['connections']=[]
@@ -157,8 +150,7 @@ class RelationRulesTests(unittest.TestCase):
         d['architecture']['requirement_coverage'][0].update(related_component_ids=['A','B','C'],related_connection_ids=[])
         f=FinalModel.model_validate(d)
         from app.review_topics import build_topics
-        t=[t for t in build_topics(f,enrich_issues(f),{}) if t['dependency_kind']=='coverage']
-        self.assertEqual(len(t),1);self.assertEqual(len(t[0]['checks']),3)
+        self.assertEqual(build_topics(f,enrich_issues(f),{}),[])
 
     def test_readable_label_retains_explicit_number_and_location(self):
         labels=source_labels([dict(requirement_id='R-abc',original_id='REQ-12',locations=['page:3'])])

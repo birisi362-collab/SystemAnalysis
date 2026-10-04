@@ -25,6 +25,7 @@ class Connection(BaseModel):
     id: str = Field(min_length=1)
     source: str
     target: str
+    direction: Literal['unidirectional', 'bidirectional'] = 'unidirectional'
     type: Literal[
         "data", "control", "power", "communication", "mechanical", "thermal", "unknown"
     ] = "unknown"
@@ -44,6 +45,14 @@ class RequirementCoverage(BaseModel):
     contextual_component_ids: List[str] = Field(default_factory=list)
     contextual_connection_ids: List[str] = Field(default_factory=list)
     notes: Optional[str] = None
+
+
+class ProposedChange(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    action: Literal["add", "update", "remove"]
+    kind: Literal["component", "connection"]
+    id: str = Field(min_length=1)
+    value: dict = Field(default_factory=dict)
 
 
 class Finding(BaseModel):
@@ -66,6 +75,8 @@ class Finding(BaseModel):
     related_component_ids: List[str] = Field(default_factory=list)
     related_connection_ids: List[str] = Field(default_factory=list)
     recommended_action: Optional[str] = None
+    proposed_changes: List[ProposedChange] = Field(default_factory=list)
+    open_details: List[str] = Field(default_factory=list)
 
 
 class ArchitectureModel(BaseModel):
@@ -75,7 +86,7 @@ class ArchitectureModel(BaseModel):
     purpose: Optional[str] = None
     components: List[Component]
     connections: List[Connection]
-    requirement_coverage: List[RequirementCoverage]
+    requirement_coverage: List[RequirementCoverage] = Field(default_factory=list)
     assumptions: List[str] = Field(default_factory=list)
 
 
@@ -102,10 +113,10 @@ class ValidationIssue(BaseModel):
 class FinalModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: str = "6.0"
+    schema_version: str = "7.0"
     source_catalog: List[dict] = Field(default_factory=list)
     run_metadata: dict = Field(default_factory=dict)
-    review_status: Literal["completed", "skipped", "failed"] = "completed"
+    review_status: Literal["completed", "partial", "skipped", "failed"] = "completed"
     architecture: ArchitectureModel
     analysis: AnalysisResult
     validation_issues: List[ValidationIssue] = Field(default_factory=list)

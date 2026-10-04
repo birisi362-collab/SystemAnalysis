@@ -1,5 +1,5 @@
 """Local, revisioned engineering workspace. Imported LLM results remain immutable."""
-from contextlib import contextmanager
+from contextlib import contextmanager, closing
 from copy import deepcopy
 from datetime import datetime, timezone
 import hashlib
@@ -9,11 +9,12 @@ from pathlib import Path
 import sqlite3
 import uuid
 
-from .models import Component, Connection, Finding, FinalModel, RequirementCoverage
+from .models import Component, Connection, Finding, FinalModel, RequirementCoverage, ProposedChange, AnalysisResult
 from .requirement_catalog import RequirementEntry
 from .validator import validate_architecture, normalize
 from .source_relations import source_relations
-from .review_topics import build_topics, source_labels
+from .review_topics import build_topics, source_labels, proposal_context, fingerprint
+from .review_runner import finding_key
 
 
 def now():
@@ -26,6 +27,12 @@ def dump(value):
 
 class ConflictError(ValueError):
     pass
+
+
+class ReviewIntakeError(ValueError):
+    def __init__(self, code, message):
+        self.code = code
+        super().__init__(message)
 
 
 ISSUE_TEXT = {
@@ -97,6 +104,10 @@ class ReviewStore:
     def __init__(self, path):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        backup = self.path.with_name('reviews.before_workspace_v2.sqlite3')
+        if self.path.exists() and not backup.exists():
+            with closing(sqlite3.connect(self.path)) as src, closing(sqlite3.connect(backup)) as dst:
+                src.backup(dst)
         with self.db() as db:
             db.executescript('''
             CREATE TABLE IF NOT EXISTS projects(id TEXT PRIMARY KEY, name TEXT NOT NULL, origin_path TEXT NOT NULL, origin_hash TEXT NOT NULL, original TEXT NOT NULL, current INTEGER NOT NULL, version INTEGER NOT NULL, redo TEXT NOT NULL, created TEXT NOT NULL, updated TEXT NOT NULL);
@@ -141,6 +152,23 @@ class ReviewStore:
         with self.db() as db:
             return [dict(r) for r in db.execute('SELECT id,name,origin_path,version,created,updated FROM projects ORDER BY updated DESC')]
 
+    def restore_snapshot(self, snapshot):
+        original = FinalModel.model_validate(snapshot['original']).model_dump()
+        state = deepcopy(snapshot['state'])
+        current = FinalModel.model_validate({**original, 'architecture':state['architecture'], 'analysis':state['analysis']})
+        state['architecture'] = current.architecture.model_dump()
+        state['analysis'] = current.analysis.model_dump()
+        for key in ('positions','decisions','provenance'):
+            if not isinstance(state.get(key), dict): state[key] = {}
+        pid = uuid.uuid4().hex; timestamp = now()
+        with self.db() as db:
+            db.execute('INSERT INTO projects VALUES(?,?,?,?,?,?,?,?,?,?)', (pid, current.architecture.system_name, 'restored:'+pid, snapshot.get('origin_hash',fingerprint(original)), dump(original), 0, 0, '[]', timestamp, timestamp))
+            db.execute('INSERT INTO revisions VALUES(?,?,?,?)', (pid, 0, None, dump(state)))
+            for event in reversed(snapshot.get('history', [])):
+                db.execute('INSERT INTO events(project_id,action,actor,reason,at,revision) VALUES(?,?,?,?,?,?)', (pid,event.get('action','import'),event.get('actor','Mühendis'),event.get('reason',''),event.get('at',timestamp),0))
+            db.execute('INSERT INTO events(project_id,action,actor,reason,at,revision) VALUES(?,?,?,?,?,?)', (pid,'import','Mühendis','Çalışma paketi açıldı; önceki işlemler geçmişte korunur.',timestamp,0))
+        return self.get(pid)
+
     def get(self, pid):
         with self.db() as db:
             row = db.execute('SELECT * FROM projects WHERE id=?', (pid,)).fetchone()
@@ -151,15 +179,26 @@ class ReviewStore:
             events = [dict(r) for r in db.execute('SELECT action,actor,reason,at,revision FROM events WHERE project_id=? ORDER BY id DESC', (pid,))]
         original = json.loads(row['original'])
         final = FinalModel.model_validate({**original, 'architecture': state['architecture'], 'analysis': state['analysis']})
-        issues = enrich_issues(final)
+        issues = []
         topics = build_topics(final, issues, state['decisions'])
-        relations = {s['requirement_id']:source_relations(final.architecture,s['requirement_id']) for s in final.source_catalog}
-        return dict(id=pid, name=row['name'], origin_path=row['origin_path'], origin_hash=row['origin_hash'], version=row['version'], current_revision=row['current'], created=row['created'], updated=row['updated'], original=original, state=state, issues=issues, topics=topics, source_labels=source_labels(final.source_catalog), source_relations=relations, history=events, can_undo=revision['parent'] is not None, can_redo=bool(json.loads(row['redo'])), changes=changes_between(original, state))
+        proposals = {}
+        for f in state['analysis']['findings']:
+            if f.get('proposed_changes'):
+                current = fingerprint(proposal_context(state['architecture'], f))
+                base = state.get('proposal_bases', {}).get(f['id'], fingerprint(proposal_context(original['architecture'], f)))
+                previous = state.get('proposal_contexts', {}).get(f['id'], proposal_context(original['architecture'], f))
+                present = proposal_context(state['architecture'], f)
+                changed = [dict(id=oid, before=previous.get(oid), after=present.get(oid)) for oid in sorted(set(previous) | set(present)) if previous.get(oid) != present.get(oid)]
+                proposals[f['id']] = dict(fingerprint=current, stale=current != base, changed_objects=changed)
+        return dict(id=pid, name=row['name'], origin_path=row['origin_path'], origin_hash=row['origin_hash'], version=row['version'], current_revision=row['current'], created=row['created'], updated=row['updated'], original=original, state=state, issues=issues, topics=topics, proposals=proposals, source_labels=source_labels(final.source_catalog), history=events, can_undo=revision['parent'] is not None, can_redo=bool(json.loads(row['redo'])), changes=changes_between(original, state))
 
     def mutate(self, pid, command):
         actor = command.get('actor', '').strip()
         reason = command.get('reason', '').strip()
         action = command.get('action')
+        defaults = {'upsert_component':'Bileşen düzenlendi', 'upsert_connection':'Bağlantı düzenlendi', 'layout':'Şema yerleşimi değişti', 'undo':'Son işlem geri alındı', 'redo':'İşlem yinelendi', 'set_assumption':'Varsayım düzenlendi', 'delete_component':'Bileşen kaldırıldı', 'delete_connection':'Bağlantı kaldırıldı', 'add_finding':'Mühendis notu eklendi', 'edit_finding':'İnceleme notu düzenlendi', 'append_review':'Yeni yapay zekâ değerlendirmesi eklendi'}
+        reason = reason or defaults.get(action, '')
+        command = {**command, 'reason':reason}
         if not actor or not reason:
             raise ValueError('Mühendis adı ve işlem gerekçesi zorunludur.')
         with self.db() as db:
@@ -199,12 +238,15 @@ class ReviewStore:
         key = command.get('id', '')
         arch = state['architecture']
         before_final = FinalModel.model_validate({**original,'architecture':arch,'analysis':state['analysis']})
-        before_topics = build_topics(before_final,enrich_issues(before_final),state['decisions'])
+        before_topics = build_topics(before_final,[],state['decisions'])
+        for topic in before_topics:
+            d = state['decisions'].get('topic:'+topic['id']) or state['decisions'].get('finding:'+topic['finding_id'])
+            if d and d.get('fingerprint_version') != 2:
+                state['decisions']['topic:'+topic['id']] = {**d, 'fingerprint':topic['fingerprint'], 'fingerprint_version':2}
         sources = {s['requirement_id']: s for s in original['source_catalog']}
         components = {x['id'] for x in arch['components']}
         connections = {x['id'] for x in arch['connections']}
         affected = set()
-        semantic = False
 
         def verify_evidence(obj):
             for ev in obj.get('evidence', []):
@@ -238,7 +280,6 @@ class ReviewStore:
                 old = next((x for x in arch['connections'] if x['id'] == obj['id']), {})
                 affected.update('component:' + x for x in [obj['source'], obj['target'], old.get('source', ''), old.get('target', '')] if x)
             put('components' if action == 'upsert_component' else 'connections', obj)
-            semantic = True
         elif action in ('delete_component', 'delete_connection'):
             if key not in (components if action == 'delete_component' else connections):
                 raise ValueError('Kaldırılacak nesne bulunamadı.')
@@ -265,7 +306,6 @@ class ReviewStore:
                     if cov['status'] in ('covered', 'partially_covered') and not cov['related_component_ids'] + cov['related_connection_ids']:
                         cov['status'] = 'unmapped'
                         cov['notes'] = 'İlişkili nesne mühendis tarafından kaldırıldı; yeniden değerlendirin.'
-            semantic = True
         elif action == 'set_coverage':
             cov = RequirementCoverage.model_validate(value).model_dump()
             if cov['requirement_id'] not in sources:
@@ -278,14 +318,60 @@ class ReviewStore:
                 raise ValueError('Bir öğe için doğrudan dayanak veya bağlam ilişkilerinden birini seçin.')
             arch['requirement_coverage'] = [c for c in arch['requirement_coverage'] if c['requirement_id'] != cov['requirement_id']] + [cov]
             affected.add('source:' + cov['requirement_id'])
+        elif action == 'apply_proposal':
+            finding = next((f for f in state['analysis']['findings'] if f['id'] == key), None)
+            if not finding or not finding.get('proposed_changes'):
+                raise ValueError('Bu konuda uygulanabilir değişiklik önerisi yok.')
+            topic = next(t for t in before_topics if t['finding_id'] == key)
+            if (topic['decision'] or {}).get('status') == 'applied':
+                raise ValueError('Bu öneri zaten uygulandı. Geri alarak yeniden düzenleyebilirsiniz.')
+            current = fingerprint(proposal_context(arch, finding))
+            base = state.get('proposal_bases', {}).get(key, fingerprint(proposal_context(original['architecture'], finding)))
+            if current != base or value.get('fingerprint') != current:
+                raise ConflictError('Önerinin dayandığı öğeler değişti. Güncel tasarımı yeniden değerlendirin veya öğeyi elle düzenleyin.')
+            changes = [ProposedChange.model_validate(c).model_dump() for c in value.get('changes', finding['proposed_changes'])]
+            expected = [(c['action'], c['kind'], c['id']) for c in finding['proposed_changes']]
+            if [(c['action'], c['kind'], c['id']) for c in changes] != expected:
+                raise ValueError('Önerinin işlem ve hedefleri değiştirilemez; öğe alanlarını düzenleyebilirsiniz.')
+            for c in changes:
+                field = 'components' if c['kind'] == 'component' else 'connections'
+                old = next((o for o in state['architecture'][field] if o['id'] == c['id']), None)
+                if (c['action'] == 'add' and old) or (c['action'] != 'add' and not old):
+                    raise ValueError('Önerideki öğe artık beklenen durumda değil.')
+                obj = {**(old or {}), **c['value'], 'id':c['id']}
+                state = self.apply(state, original, {**command, 'action':('delete_' if c['action']=='remove' else 'upsert_')+c['kind'], 'id':c['id'] if old else '', 'value':{'cascade':True} if c['action']=='remove' else obj})
+            final = FinalModel.model_validate({**original, 'architecture':state['architecture'], 'analysis':state['analysis']})
+            updated = next(t for t in build_topics(final, [], state['decisions']) if t['finding_id'] == key)
+            state['decisions']['topic:'+topic['id']] = dict(status='applied', note=command['reason'], actor=command['actor'], at=now(), stale=False, fingerprint=updated['fingerprint'], fingerprint_version=2)
+            return state
+        elif action == 'append_review':
+            analysis = AnalysisResult.model_validate(value['analysis']).model_dump()
+            if value.get('architecture_fingerprint') != fingerprint(arch):
+                raise ConflictError('Değerlendirme sırasında tasarım değişti. Önerileri güncel tasarımla yeniden isteyin.')
+            for f in analysis['findings']:
+                f['id'] = 'review_'+uuid.uuid4().hex[:16]
+                try:
+                    verify_evidence(f)
+                except ValueError as exc:
+                    raise ReviewIntakeError('QUOTE_MISMATCH', 'Model bulgusundaki alıntı kaynakla eşleşmiyor. Ayrıntılı model çıktısı teşhis kaydında korunuyor.') from exc
+                if set(f['related_component_ids']) - components or set(f['related_connection_ids']) - connections:
+                    raise ReviewIntakeError('OBJECT_UNKNOWN', 'Model bulgusu şemada bulunmayan bir öğeye başvuruyor. Mevcut çalışma korundu.')
+                if any(finding_key(old) == finding_key(f) for old in state['analysis']['findings']):
+                    continue
+                state['analysis']['findings'].append(f)
+                state.setdefault('proposal_bases', {})[f['id']] = fingerprint(proposal_context(arch, f))
+                state.setdefault('proposal_contexts', {})[f['id']] = proposal_context(arch, f)
+            for field in ('missing_information','open_questions'):
+                state['analysis'][field] = list(dict.fromkeys(state['analysis'].get(field, [])+analysis[field]))
+            state['last_review_at'] = now()
         elif action == 'set_topic_decision':
             final = FinalModel.model_validate({**original, 'architecture':arch, 'analysis':state['analysis']})
-            topics = build_topics(final, enrich_issues(final), state['decisions'])
+            topics = build_topics(final, [], state['decisions'])
             topic = next((t for t in topics if t['id']==key), None)
             if not topic:
                 raise ValueError('İncelenecek konu bulunamadı. Listeyi yenileyin.')
             status = value.get('status')
-            if status not in ('resolved','accepted','needs_review','merged','waiting'):
+            if status not in ('resolved','accepted','rejected','needs_review','merged','waiting'):
                 raise ValueError('Geçersiz konu kararı.')
             target = value.get('merged_into') if status=='merged' else None
             if status=='merged':
@@ -300,9 +386,9 @@ class ReviewStore:
                     seen.add(cursor)
                     cursor=state['decisions'].get('topic:'+cursor,{}).get('merged_into')
             snapshot={k:v for k,v in topic.items() if k not in ('decision',)}
-            state['decisions']['topic:'+key]=dict(status=status, note=command['reason'], actor=command['actor'], at=now(), stale=False, fingerprint=topic['fingerprint'], snapshot=snapshot, merged_into=target)
+            state['decisions']['topic:'+key]=dict(status=status, note=command['reason'], actor=command['actor'], at=now(), stale=False, fingerprint=topic['fingerprint'], fingerprint_version=2, snapshot=snapshot, merged_into=target)
             # Calculate the newly selected merge dependency, including any target chain.
-            updated=next(t for t in build_topics(final,enrich_issues(final),state['decisions']) if t['id']==key)
+            updated=next(t for t in build_topics(final,[],state['decisions']) if t['id']==key)
             state['decisions']['topic:'+key]['fingerprint']=updated['fingerprint']
         elif action == 'set_decision':
             kind, _, oid = key.partition(':')
@@ -350,7 +436,6 @@ class ReviewStore:
                 raise ValueError('Geçerli varsayım ve açıklama gerekli.')
             arch['assumptions'][index] = text
             affected.add('assumption:' + key)
-            semantic = True
         elif action == 'layout':
             if set(value) - components:
                 raise ValueError('Yerleşimde bulunmayan bileşen var.')
@@ -360,24 +445,13 @@ class ReviewStore:
             state['positions'].update(value)
         else:
             raise ValueError('Desteklenmeyen işlem.')
-        if semantic:
-            # Any architecture change can affect a missing-interface finding. Never auto-resolve it.
-            affected.update('finding:' + f['id'] for f in state['analysis']['findings'])
         for decision_key in affected:
             if decision_key in state['decisions']:
                 state['decisions'][decision_key]['stale'] = True
                 state['decisions'][decision_key]['stale_reason'] = 'İlişkili mimari veya dayanak değişti; önceki kararı yeniden değerlendirin.'
         # Topic decisions track only their own dependencies; unrelated edits do not reopen them.
         final = FinalModel.model_validate({**original,'architecture':arch,'analysis':state['analysis']})
-        current_topics = build_topics(final,enrich_issues(final),state['decisions'])
-        active_ids = {t['id'] for t in current_topics if t['active']}
-        for previous in before_topics:
-            key_for_topic = 'topic:'+previous['id']
-            if previous['active'] and previous['kind'] != 'engineering' and previous['id'] not in active_ids and key_for_topic not in state['decisions']:
-                # A fix clears a check; retain the engineering edit reason in completed work.
-                snapshot={k:v for k,v in previous.items() if k != 'decision'}
-                state['decisions'][key_for_topic]=dict(status='resolved', note=command['reason'], actor=command['actor'], at=now(), stale=False, fingerprint=previous['fingerprint'], snapshot=snapshot, auto_completed=True, merged_into=None)
-        for topic in build_topics(final,enrich_issues(final),state['decisions']):
+        for topic in build_topics(final,[],state['decisions']):
             decision_key='topic:'+topic['id']
             if decision_key in state['decisions']:
                 state['decisions'][decision_key]['stale']=bool(topic['decision'].get('stale')) if topic['active'] else False

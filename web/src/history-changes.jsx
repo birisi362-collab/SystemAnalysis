@@ -49,10 +49,12 @@ function FieldValue({ value, field, project, original = false }) {
     high: "Yüksek",
     critical: "Kritik",
     info: "Bilgi",
+    unidirectional: "Tek yönlü",
+    bidirectional: "Çift yönlü",
   };
   if (typeof value === "string")
     return readableText(
-      ["category", "type", "status", "severity"].includes(field)
+      ["category", "type", "status", "severity", "direction"].includes(field)
         ? names[value] || value
         : value,
       project,
@@ -66,6 +68,7 @@ const fields = {
   category: "Sınıf",
   source: "Başlangıç",
   target: "Hedef",
+  direction: "Bağlantı yönü",
   type: "Akış türü",
   protocol: "Arayüz",
   evidence: "Doküman dayanağı",

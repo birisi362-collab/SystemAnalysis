@@ -16,7 +16,8 @@ def render_mermaid(final):
     for e in a.connections:
         if e.source not in ids or e.target not in ids: continue
         label=' / '.join(x for x in [e.label,e.protocol] if x) or e.type
-        lines.append(f'    {ids[e.source]} -->|"{_label(label)}"| {ids[e.target]}')
+        arrow = '<-->' if e.direction == 'bidirectional' else '-->'
+        lines.append(f'    {ids[e.source]} {arrow}|"{_label(label)}"| {ids[e.target]}')
     return '\n'.join(lines)
 
 def render_dot(final):
@@ -25,7 +26,8 @@ def render_dot(final):
     for e in a.connections:
         if e.source not in ids or e.target not in ids: continue
         label=' / '.join(x for x in [e.label,e.protocol] if x) or e.type
-        lines.append(f'{ids[e.source]} -> {ids[e.target]} [label={json.dumps(label,ensure_ascii=False)}];')
+        direction = ',dir=both' if e.direction == 'bidirectional' else ''
+        lines.append(f'{ids[e.source]} -> {ids[e.target]} [label={json.dumps(label,ensure_ascii=False)}{direction}];')
     return '\n'.join(lines+['}'])
 
 def write_outputs(final,output_dir):
@@ -39,12 +41,12 @@ def write_outputs(final,output_dir):
         Source(dot).render(filename=str(out/'system_diagram'),format='svg',cleanup=True)
     except Exception as exc:
         (out/'graphviz_error.txt').write_text('SVG export unavailable: '+str(exc),encoding='utf-8')
-    badge='HATA VAR — inceleyin' if any(i.severity=='error' for i in final.validation_issues) else 'Otomatik kontrol tamamlandı — doğruluk onayı değildir'
-    rows=''.join(f'<tr><td>{html.escape(i.severity)}</td><td>{html.escape(i.code)}</td><td>{html.escape(i.message)}</td></tr>' for i in final.validation_issues)
+    badge='Mimari çalışma çıktısı — mühendis değerlendirmesi'
+    rows=''.join(f'<article><h3>{html.escape(f.title)}</h3><p>{html.escape(f.description)}</p><p>{html.escape(f.recommended_action or "")}</p></article>' for f in final.analysis.findings)
     text=f'''<!doctype html><html lang="tr"><meta charset="utf-8"><title>Analiz raporu</title>
 <style>body{{font:16px system-ui;max-width:1000px;margin:32px auto;padding:20px}}td,th{{border:1px solid #ccc;padding:8px}}table{{border-collapse:collapse}}pre{{white-space:pre-wrap}}</style>
 <h1>{html.escape(final.architecture.system_name)}</h1><p>{badge}</p>
 <p>İkinci tur: {final.review_status}. İnsan incelemesi gereklidir. Geçersiz uçlu bağlantılar şemada çizilmez; JSON içinde korunur.</p>
-<table><tr><th>Önem</th><th>Kod</th><th>Açıklama</th></tr>{rows}</table>
+<h2>Mühendislik önerileri ve bulguları</h2>{rows}
 <h2>Model ve kaynaklar</h2><pre>{html.escape(final.model_dump_json(indent=2))}</pre></html>'''
     (out/'report.html').write_text(text,encoding='utf-8')

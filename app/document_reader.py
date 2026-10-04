@@ -2,6 +2,9 @@
 from dataclasses import dataclass
 from pathlib import Path
 
+class UnreadableDocument(ValueError):
+    code = 'EMPTY_DOCUMENT'
+
 @dataclass
 class SourceBlock:
     text: str
@@ -45,7 +48,7 @@ def read_blocks(path_str: str) -> list[SourceBlock]:
         for p, page in enumerate(PdfReader(str(path)).pages, 1):
             text = page.extract_text() or ''
             if not text.strip():
-                raise ValueError(f'PDF page {p} has no extractable text. OCR is required; analysis stopped to avoid silent omission.')
+                raise UnreadableDocument(f'PDF page {p} has no extractable text. OCR is required; analysis stopped to avoid silent omission.')
             blocks.extend(SourceBlock(t, f'page:{p}/line:{i}', 'line')
                           for i, t in enumerate(text.splitlines(), 1))
         return blocks

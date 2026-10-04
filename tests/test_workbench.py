@@ -91,7 +91,8 @@ class StoreTests(unittest.TestCase):
     def test_engineering_addition_without_evidence_is_visible(self):
         self.apply('upsert_component', value=dict(id='manual',name='Yeni tasarım',category='component',description='',evidence=[]))
         self.assertEqual(self.p['state']['provenance']['component:manual']['origin'],'engineer_added')
-        self.assertTrue(any(i['code']=='MISSING_EVIDENCE' and i['object_id']=='manual' for i in self.p['issues']))
+        self.assertEqual(self.p['issues'],[])
+        self.assertEqual(self.p['topics'],[])
         self.assertNotIn('component:manual',self.p['state']['decisions'])
 
     def test_invalid_endpoint_rejected(self):
@@ -107,28 +108,33 @@ class StoreTests(unittest.TestCase):
         self.assertTrue(all(edge['source'] not in c['related_component_ids'] for c in self.p['state']['architecture']['requirement_coverage']))
         self.apply('undo');self.assertEqual(self.p['state'],initial)
 
-    def test_false_extra_protocol_is_reported(self):
+    def test_protocol_edit_does_not_create_automatic_task(self):
         edge=copy.deepcopy(self.p['state']['architecture']['connections'][0]);edge['protocol'] += ' / UDP'
         self.apply('upsert_connection',edge['id'],edge)
-        self.assertTrue(any(i['code']=='PROTOCOL_NOT_SUPPORTED' for i in self.p['issues']))
+        self.assertEqual(self.p['issues'],[])
+        self.assertEqual(self.p['state']['architecture']['connections'][0]['protocol'],edge['protocol'])
 
-    def test_merge_cycle_rejected_and_findings_become_stale(self):
+    def test_merge_cycle_rejected_and_unrelated_edit_keeps_findings_current(self):
         for fid in ['f_a','f_b']:
             self.apply('add_finding',value=dict(id=fid,severity='medium',type='other',title='Test',description='Test',evidence=[],related_component_ids=[],related_connection_ids=[]))
         self.apply('set_decision','finding:f_a',{'status':'merged','merged_into':'f_b'})
         with self.assertRaises(ValueError):self.apply('set_decision','finding:f_b',{'status':'merged','merged_into':'f_a'})
         c=copy.deepcopy(self.p['state']['architecture']['components'][0]);c['name']='Değişti'
         self.apply('upsert_component',c['id'],c)
-        self.assertTrue(self.p['state']['decisions']['finding:f_a']['stale'])
+        self.assertFalse(self.p['state']['decisions']['finding:f_a']['stale'])
 
     def test_coverage_edit_is_independent_of_human_approval(self):
         c=copy.deepcopy(self.p['state']['architecture']['requirement_coverage'][0]);c['status']='partially_covered'
         self.apply('set_coverage',value=c)
-        self.assertTrue(any(i['code']=='PARTIAL_COVERAGE' for i in self.p['issues']))
+        self.assertEqual(self.p['issues'],[])
         self.assertNotIn('source:'+c['requirement_id'],self.p['state']['decisions'])
 
-    def test_reason_and_author_required(self):
-        with self.assertRaises(ValueError):self.apply('layout',value={},reason=' ')
+    def test_decisions_require_reason_but_routine_edits_do_not(self):
+        self.apply('layout',value={},reason=' ')
+        c=self.p['state']['architecture']['components'][0]
+        with self.assertRaises(ValueError):self.apply('set_decision','component:'+c['id'],{'status':'approved'},reason=' ')
+        with self.assertRaises(ValueError):
+            self.store.mutate(self.p['id'],dict(version=self.p['version'],action='layout',value={},actor='',reason=''))
 
     def test_finding_can_be_repaired_after_related_component_removed(self):
         component=self.p['state']['architecture']['components'][0]
@@ -136,22 +142,21 @@ class StoreTests(unittest.TestCase):
         self.apply('add_finding',value=finding)
         self.apply('set_decision','finding:f_repair',{'status':'accepted'})
         self.apply('delete_component',component['id'],{'cascade':True})
-        issue=next(i for i in self.p['issues'] if i['code']=='UNKNOWN_COMPONENT_REF')
-        self.assertEqual(issue['finding_id'],'f_repair')
+        self.assertEqual(self.p['issues'],[])
+        self.assertEqual(self.p['topics'][0]['status'],'reopened')
         finding['related_component_ids']=[]
         finding['title']='Updated review'
         self.apply('edit_finding','f_repair',finding)
         self.assertFalse(any(i['code']=='UNKNOWN_COMPONENT_REF' for i in self.p['issues']))
-        self.assertTrue(self.p['state']['decisions']['finding:f_repair']['stale'])
+        self.assertEqual(self.p['topics'][0]['status'],'reopened')
         self.assertEqual(self.p['state']['analysis']['findings'][0]['title'],'Updated review')
         self.apply('undo')
-        self.assertTrue(any(i['code']=='UNKNOWN_COMPONENT_REF' for i in self.p['issues']))
+        self.assertEqual(self.p['state']['analysis']['findings'][0]['related_component_ids'],[component['id']])
 
     def test_finding_missing_evidence_points_to_editable_finding(self):
         self.apply('add_finding',value=dict(id='f_note',severity='low',type='other',title='Observation',description='Observation',evidence=[]))
-        issue=next(i for i in self.p['issues'] if i['code']=='MISSING_EVIDENCE')
-        self.assertEqual(issue['finding_id'],'f_note')
-        self.assertIsNone(issue['object_id'])
+        self.assertEqual(self.p['issues'],[])
+        self.assertEqual(self.p['topics'][0]['finding_id'],'f_note')
         changed=copy.deepcopy(self.p['state']['analysis']['findings'][0]);changed['id']='wrong'
         with self.assertRaises(ValueError):self.apply('edit_finding','f_note',changed)
 
@@ -213,10 +218,12 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(self.client.post('/api/projects/'+p['id']+'/changes',json=cmd,headers=self.headers).status_code,200)
         self.assertEqual(self.client.post('/api/projects/'+p['id']+'/changes',json=cmd,headers=self.headers).status_code,409)
 
-    def test_topic_closure_and_export_keep_reason_and_raw_check(self):
+    def test_finding_closure_and_export_keep_reason_without_automatic_tasks(self):
         p=self.client.post('/api/projects/import',json={'path':str(self.source)},headers=self.headers).json()
         endpoint='/api/projects/'+p['id']+'/changes'
         p=self.client.post(endpoint,json=dict(version=p['version'],action='upsert_component',value=dict(id='manual',name='Yeni tasarım',category='system',evidence=[]),actor='Mühendis',reason='Mühendislik ilavesi'),headers=self.headers).json()
+        self.assertEqual(p['topics'],[])
+        p=self.client.post(endpoint,json=dict(version=p['version'],action='add_finding',value=dict(id='note',title='Tasarım kararı',description='Belge dışı ilaveyi değerlendirelim.',severity='low',type='other',related_component_ids=['manual'],evidence=[]),actor='Mühendis'),headers=self.headers).json()
         topic=next(t for t in p['topics'] if t['object_ids']==['manual'])
         response=self.client.post(endpoint,json=dict(version=p['version'],action='set_topic_decision',id=topic['id'],value={'status':'accepted'},actor='Mühendis',reason='Belge dışı tasarım kararını gerekçesiyle kabul ettim'),headers=self.headers)
         self.assertEqual(response.status_code,200,response.text)
@@ -226,7 +233,7 @@ class ApiTests(unittest.TestCase):
             t=next(t for t in review['topics'] if t['id']==topic['id'])
             self.assertEqual(t['status'],'completed')
             self.assertIn('Belge dışı',t['decision']['note'])
-            self.assertTrue(any(i['code']=='MISSING_EVIDENCE' and i['object_id']=='manual' for i in review['issues']))
+            self.assertEqual(review['issues'],[])
 
 
 if __name__=='__main__':unittest.main()

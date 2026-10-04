@@ -12,10 +12,13 @@ geri al/yinele, değişiklik geçmişi ve çıktı paketi içerir. Streamlit bu 
 
 Bu bilgisayarda **`run_app.bat`** dosyasını açın; uygulama `http://127.0.0.1:8766` adresinde çalışır.
 Hazır derleme `web/dist` içinde; kullanım için Node gerekmez.
-Yeni kurulumda: `python -m pip install -r requirements-workbench.txt`.
-Ardından: `python run_workbench.py`.
+Windows için doğrulanmış kurulum: Python 3.12 ile `.venv-workbench` oluşturup bağımlılıkları bu ortama kurun (aşağıdaki komutlar). Başlatıcı bu ortamı otomatik seçer ve açılışta TLS kontrolü yapar.
 
 **[Kullanım, teknoloji seçimi ve geliştirme notları](docs/MIMARI_ATOLYESI_TR.md)**
+
+Değerlendirme artık bölüm bazında ilerler; sorunlu model çıktısı diğer geçerli bulguları kaybettirmez.
+**Değerlendirme ayrıntıları** üzerinden neden ve token kullanımı görülebilir; **Eksik bölümleri yeniden dene** başarılı sonuçları korur.
+**[Değerlendirme ve teşhis akışı](docs/DEGERLENDIRME_TEHSISI_TR.md)**.
 
 Sürüm 1.2: sade konu listesi, üç adımlı konu ayrıntısı, anlaşılır kaynak etiketleri,
 doğrudan/bağlam ilişkileri, Geçmiş bölümünde değişiklik karşılaştırması, gerekçeli
@@ -28,8 +31,8 @@ Depoyu GitHub'a gönderdikten sonra başka bilgisayarda:
 ```powershell
 git clone https://github.com/<kullanici>/<depo>.git
 cd <depo>
-python -m venv venv
-.\venv\Scripts\python.exe -m pip install -r requirements-workbench.txt
+py -3.12 -m venv .venv-workbench
+.\.venv-workbench\Scripts\python.exe -m pip install -r requirements-workbench.txt
 .\run_app.bat
 ```
 
@@ -37,11 +40,10 @@ python -m venv venv
 
 ## Geliştirme ve test
 
-Python 3.10+; Windows/Anaconda veya Linux:
+Python 3.10+; Windows uygulaması için Python 3.12 önerilir. Linux'ta normal bir sanal ortam kullanılabilir:
 
 ```bat
 python -m pip install -r requirements.txt
-python -m unittest discover -s tests -v
 python -m unittest discover -s tests -v
 ```
 
