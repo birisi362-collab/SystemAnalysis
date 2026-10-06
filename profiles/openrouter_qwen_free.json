@@ -1,0 +1,11 @@
+{
+  "description": "Optional free Qwen alternative for manual selection when Nvidia is overloaded. Listed as free on OpenRouter on 2026-10-06; availability and rate limits depend on the provider.",
+  "base_url": "https://openrouter.ai/api/v1",
+  "model": "qwen/qwen3.8-27b:free",
+  "api_key_env": "OPENROUTER_API_KEY",
+  "json_mode": false,
+  "include_reasoning": false,
+  "timeout": 180,
+  "max_tokens": 8192,
+  "max_retries": 1
+}
