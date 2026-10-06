@@ -13,6 +13,10 @@ Yeni değerlendirme, mühendis tasarımını ve kararlarını değiştirmez. Kul
 
 ## Davranış
 
+- Bölüm başlığındaki **Kapsam: Bütün tasarım** incelemeye gönderilen kapsamı belirtir. **Yanıtta kabul edilmeyen sonuçlar var** ise model yanıtının kabul durumudur; tasarımın kısmen çalıştığı anlamına gelmez.
+- Kaynak kontrolünden geçemeyen çıktılar varsa sonuç mesajı kabul edilen ve edilmeyen sayıları ayrı gösterir. **0 bulgu kabul edildi** tasarımda hata olmadığını kanıtlamaz. `QUOTE_MISMATCH`, alıntının kaynakta doğrulanamadığını belirtir; önerinin mühendislik önemini ölçmez.
+- İlerleme satırındaki **bölümün yanıtı işlendi** sayacı, model yanıtının işlenmesini gösterir. Bazı bölümler incelenememişse veya çapraz inceleme eksikse sonuç mesajında bu durum ayrıca belirtilir. Yeniden deneme davranışı ve kaynak doğrulama kuralları korunur.
+
 - Küçük tasarım tek istekte, büyük belge bölümler halinde incelenir. Bütün mimari her bölümde bağlam olarak bulunur. Bölümler arası çelişki ve arayüz ilişkileri ayrıca incelenir.
 - Olağan kaynak kayıtları bölünmez. Çok uzun tek kayıtta 400 karakter örtüşme kullanılır; kaynak kimliği korunur ve alıntı özgün tam metinde kontrol edilir.
 - `TRUNCATED` / `length`, çıktı bütçesinde kesilmeyi belirtir. Bölüm en fazla iki düzey küçültülür. Her değerlendirmede en fazla 8 bölüm çağrısı yapılır; kalan işler saklanır. Taşıma katmanındaki sınırlı HTTP yeniden denemeleri de toplam süre sınırına tabidir.

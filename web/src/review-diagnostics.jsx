@@ -1,14 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { api } from "./workspace-ui.jsx";
+import { reviewSectionStatus, reviewSectionCounts } from "./review-status.js";
 
 const format = (value) =>
   Number.isFinite(value) ? value.toLocaleString("tr-TR") : "Kayıt yok";
-const states = {
-  completed: "Tamamlandı",
-  partial: "Kısmen kullanılabildi",
-  failed: "Tamamlanamadı",
-  split: "Daha küçük parçalara ayrıldı",
-};
 
 export function ReviewDiagnostics({ job }) {
   const [detail, setDetail] = useState(null),
@@ -38,8 +33,9 @@ export function ReviewDiagnostics({ job }) {
     <div className="drawer-body review-diagnostics">
       <p>{detail.message}</p>
       <p>
-        Bu ekran yapay zekâ değerlendirmesinin durumunu açıklar. Kullanılamayan
-        model çıktıları şemaya uygulanmaz; bunları sizin kanıtlamanız gerekmez.
+        Bu ekran incelemenin kapsamını ve model yanıtının kabul durumunu
+        gösterir. Kabul edilmeyen çıktılar tasarım hatası olarak bulgu listesine
+        eklenmez. Ret nedenlerini aşağıda görebilirsiniz.
       </p>
       <dl className="review-metrics">
         <div>
@@ -47,7 +43,7 @@ export function ReviewDiagnostics({ job }) {
           <dd>{format(detail.added_findings)}</dd>
         </div>
         <div>
-          <dt>Kullanılamayan bulgu / öneri</dt>
+          <dt>Kabul edilmeyen bulgu / öneri</dt>
           <dd>{format(detail.excluded_findings)}</dd>
         </div>
         <div>
@@ -80,11 +76,11 @@ export function ReviewDiagnostics({ job }) {
       )}
       {report?.sections?.length > 0 && (
         <>
-          <h3>İncelenen bölümler</h3>
+          <h3>İnceleme kapsamı ve yanıt durumu</h3>
           {report.sections.map((section, index) => (
             <details key={index}>
               <summary>
-                {section.label} · {states[section.status] || section.status}
+                Kapsam: {section.label} · {reviewSectionStatus(section)}
               </summary>
               {section.message && <p>{section.message}</p>}
               {section.error_code && (
@@ -92,11 +88,8 @@ export function ReviewDiagnostics({ job }) {
                   Hata kodu: <code>{section.error_code}</code>
                 </p>
               )}
-              {section.accepted !== undefined && (
-                <p>
-                  {section.accepted} bulgu kullanılabildi, {section.excluded}{" "}
-                  bulgu veya öneri ayrı tutuldu.
-                </p>
+              {reviewSectionCounts(section) && (
+                <p>{reviewSectionCounts(section)}</p>
               )}
               {(section.transport || []).map((call, i) => (
                 <div key={i} className="review-call">
@@ -131,7 +124,7 @@ export function ReviewDiagnostics({ job }) {
       )}
       {report?.excluded?.length > 0 && (
         <>
-          <h3>Kullanılamayan model çıktıları</h3>
+          <h3>Kabul edilmeyen model çıktıları</h3>
           <p>
             Diğer geçerli bulgular korunur. Bu bölümdeki çıktı bir mühendislik
             hatası olarak işaretlenmez.

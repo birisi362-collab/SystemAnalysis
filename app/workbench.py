@@ -29,7 +29,7 @@ from .pipeline import run
 from .renderer import write_outputs
 from .review_store import ReviewStore, ConflictError, ReviewIntakeError, now
 from .settings import ROOT, load_settings
-from .review_runner import run_review
+from .review_runner import run_review, review_summary
 
 
 class ImportBody(BaseModel):
@@ -266,10 +266,11 @@ def create_app(data_dir=None, dist_dir=None):
                 client = FixtureClient(ROOT/'evaluation/cases/dev_01.fixture.json') if body.demo else LLMClient(**cfg,isolate=True,cancel_event=controls[jid],deadline=time.monotonic()+cfg['timeout'])
                 final = run(str(source), str(out), client, two_pass=body.two_pass, progress=progress)
                 project = store.import_run(out)
-                job.update(status='partial' if final.review_status in ('failed','partial') else 'completed', project_id=project['id'], message='İnceleme hazır.' if final.review_status not in ('failed','partial') else 'Mimari hazır; değerlendirme kısmen tamamlandı. Kullanılabilir bulgular korundu; ayrıntıları inceleyebilirsiniz.')
+                job.update(status='partial' if final.review_status in ('failed','partial') else 'completed', project_id=project['id'], message='İnceleme hazır.' if final.review_status not in ('failed','partial') else 'Mimari hazır; değerlendirme yanıtı tamamen işlenemedi. Ayrıntıları inceleyebilirsiniz.')
                 report_path=out/'review_diagnostics.json'
                 if report_path.exists():
                     report=json.loads(report_path.read_text(encoding='utf-8'))
+                    job['message'] = 'Mimari hazır. ' + review_summary(report)
                     job.update(review_report=report, calls=report['calls'], accepted_findings=len(report['analysis']['findings']), excluded_findings=len(report['excluded']), added_findings=len(report['analysis']['findings']), can_retry_missing=bool(report['retry_tasks']), architecture_fingerprint=fingerprint(project['state']['architecture']))
                     calls=[c for s in report['sections'] for c in s.get('transport',[])]
                     job['token_usage']={k:sum((c.get('usage') or {}).get(k,0) or 0 for c in calls) for k in ('prompt_tokens','completion_tokens','total_tokens')}
@@ -392,7 +393,7 @@ def create_app(data_dir=None, dist_dir=None):
                 else:
                     count = job.get('added_findings', 0)
                     message = f'{count} yeni bulgu eklendi. '
-                    message += 'Değerlendirme kısmen tamamlandı; ayrıntılarda eksik veya kullanılamayan sonuçları görebilirsiniz.' if incomplete else 'Değerlendirme tamamlandı.'
+                    message += review_summary(report)
                     job.update(status='partial' if incomplete else 'completed', message=message)
                 job['can_retry_missing'] = bool(report['retry_tasks'])
                 if any(s.get('error_code')=='CANCELLED' for s in report['sections']):

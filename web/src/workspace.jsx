@@ -37,6 +37,7 @@ import { StartPanel, HistoryPanel } from "./workspace-drawers.jsx";
 import { ReviewDiagnostics } from "./review-diagnostics.jsx";
 import { pollJob } from "./workbench-api.js";
 import { readableText } from "./review-labels.js";
+import { reviewProgress } from "./review-status.js";
 import "./workspace.css";
 
 function Workspace({
@@ -844,9 +845,7 @@ function JobProgress({ job, online }) {
     `${Math.floor(n / 60)}:${String(n % 60).padStart(2, "0")}`;
   return (
     <small className="job-progress">
-      {job.total_sections
-        ? `${job.completed_sections || 0}/${job.total_sections} bölüm tamamlandı · `
-        : ""}
+      {reviewProgress(job) ? `${reviewProgress(job)} · ` : ""}
       {active ? "Geçen süre" : "Süre"}: {duration(seconds)}
       {active && job.timeout
         ? ` · Toplam süre sınırı: ${duration(job.timeout)}`

@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch
 from app.llm_client import LLMClient, LLMError
 from app.models import ArchitectureModel
 from app.requirement_catalog import RequirementEntry
-from app.review_runner import inspect_result, plan_review, run_review, task, source_parts
+from app.review_runner import inspect_result, plan_review, run_review, task, source_parts, review_summary
 import test_workspace_v2 as workspace_fixture
 from test_workspace_v2 import example
 
@@ -32,6 +32,20 @@ class ReviewRunnerTests(unittest.TestCase):
         self.assertEqual([f['title'] for f in accepted['findings']], [good['title']])
         self.assertEqual([f['code'] for f in excluded], ['QUOTE_MISMATCH', 'OBJECT_UNKNOWN', 'FINDING_SCHEMA'])
         self.assertEqual(excluded[0]['finding'], quote)
+
+    def test_summary_separates_rejected_output_from_incomplete_review(self):
+        report = dict(analysis=dict(findings=[]), excluded=[{}, {}, {}],
+                      sections=[dict(status='partial')], retry_tasks=[dict(feedback='QUOTE_MISMATCH')])
+        self.assertEqual(review_summary(report),
+                         'Planlanan bölümler incelendi. 0 bulgu kabul edildi; 3 bulgu veya öneri kabul edilmedi.')
+        for changes in (
+            dict(sections=[dict(status='failed')]),
+            dict(retry_tasks=[dict(label='Henüz incelenmeyen bölüm')]),
+            dict(sections=[dict(status='split', cross_review_incomplete=True)]),
+            dict(remaining_tasks=[dict(label='Bekleyen bölüm')]),
+        ):
+            with self.subTest(changes=changes):
+                self.assertTrue(review_summary({**report, **changes}).startswith('Bazı bölümlerin incelemesi tamamlanamadı.'))
 
     def test_invalid_executable_proposal_is_removed_but_observation_survives(self):
         result = finding(proposed_changes=[dict(action='update', kind='component', id='ghost', value={})])
@@ -159,6 +173,8 @@ class RecoverableReviewApiTests(unittest.TestCase):
         self.assertEqual(job['status'], 'partial', job)
         self.assertTrue(job['can_retry_missing'])
         self.assertEqual(job['added_findings'], 1)
+        self.assertIn('Planlanan bölümler incelendi.', job['message'])
+        self.assertIn('1 bulgu kabul edildi; 1 bulgu veya öneri kabul edilmedi.', job['message'])
         self.assertNotIn('review_report', job)
         detail = self.client.get('/api/jobs/' + job['id'] + '/diagnostics').json()
         self.assertEqual(detail['review_report']['excluded'][0]['code'], 'SOURCE_UNKNOWN')
@@ -180,6 +196,21 @@ class RecoverableReviewApiTests(unittest.TestCase):
         p = self.client.get('/api/projects/' + self.p['id']).json()
         self.assertEqual(len(p['topics']), 3)
         self.assertEqual(p['state']['architecture'], self.p['state']['architecture'])
+
+    def test_all_quote_mismatches_report_zero_accepted_without_claiming_partial_design(self):
+        rejected = [finding(f'Öneri {i}') for i in range(3)]
+        for f in rejected:
+            f['evidence'] = [dict(requirement_id=self.p['original']['source_catalog'][0]['requirement_id'], quote='Kaynakta bulunmayan alıntı')]
+        with patch('app.workbench.LLMClient') as client:
+            client.return_value.calls = []
+            client.return_value.extract_json.return_value = dict(findings=rejected)
+            job = self.review()
+        self.assertEqual(job['status'], 'partial')
+        self.assertEqual(job['message'], '0 yeni bulgu eklendi. Planlanan bölümler incelendi. 0 bulgu kabul edildi; 3 bulgu veya öneri kabul edilmedi.')
+        detail = self.client.get('/api/jobs/' + job['id'] + '/diagnostics').json()
+        self.assertEqual([e['code'] for e in detail['review_report']['excluded']], ['QUOTE_MISMATCH'] * 3)
+        current = self.client.get('/api/projects/' + self.p['id']).json()
+        self.assertEqual(current['state']['architecture'], self.p['state']['architecture'])
 
     def test_invalid_proposal_does_not_edit_design_and_is_not_executable(self):
         bad = finding(proposed_changes=[dict(action='add',kind='connection',id='bad_edge',value=dict(source='A',target='ghost'))])
