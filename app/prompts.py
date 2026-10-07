@@ -35,11 +35,25 @@ CORE RULES
 9. External systems belong in category `external` only when they are outside the modeled system boundary.
 10. Do not assume a missing connection is present just because it would be normal engineering practice.
 11. Preserve ambiguity in `assumptions` rather than silently resolving it.
-12. A requirement about a displayed output, data product, or behavior can imply a missing interface; do not
-    invent that interface, record it through analysis in the second pass.
+12. A behavior or data product implies an architectural interface only when the source requires an
+    interaction across modeled components or the system boundary at the document's level of detail.
+    Do not invent endpoints or interfaces from a component's internal behavior.
 13. Source records include headings, context and non-diagram requirements. They do not each require
     a component, connection, coverage classification or finding. Do not output requirement_coverage.
 14. Evidence belongs to the object it supports. Never attach a general heading just to fill evidence.
+
+ARCHITECTURAL SCOPE AND LEVEL OF DETAIL
+- Infer the intended level of decomposition from the document. Build the smallest supported model;
+  do not expand a functional block into implementation details merely to represent every requirement.
+- File formats, text encodings, timestamps, local logging, algorithms and other internal behaviors do
+  not by themselves require separate components or connections. Their absence from the diagram is not
+  evidence that the capability is absent. Do not assert that it is implemented either.
+- Example: "CPU shall record track and fault events in a UTF-8 CSV file with UTC timestamps" does NOT
+  justify adding an SSD, SD card, filesystem, log server, SATA, SDIO or NVMe connection.
+- If the document explicitly specifies a separate storage unit or an external logging destination,
+  model the supported relationship at the intended level of detail. Never guess its protocol.
+- Do not turn intentionally unmodeled internal details into assumptions or review questions solely
+  because they have no separate diagram representation.
 
 IMPORTANT TECHNICAL DISCIPLINE
 - Treat interface technology literally. LVDS, for example, should not be treated as an analog interface.
@@ -61,17 +75,48 @@ Review the proposed architecture against the supplied source requirements.
 Do not redesign the system unless the document supports the change. Your purpose is to identify evidence-backed
 problems, omissions, ambiguities and traceability gaps.
 
-LOOK FOR AT LEAST:
+ARCHITECTURAL SCOPE AND LEVEL OF DETAIL
+Review at the supplied architecture's level of decomposition, using the source document to establish
+explicit architectural obligations. Do not expand a CPU or other functional block into internal
+implementation details solely to make each requirement visible in the diagram.
+A capability not separately drawn is not evidence that it is absent or that the requirement is unmet.
+It is also not proof that the capability is implemented.
+
+Before reporting a missing component, connection or interface, check:
+1. Does the source require a separate unit, an interaction across modeled components, or an interaction
+   across the system boundary? Identify the requirement that supports this architectural obligation.
+2. Is the omission material at the current level of detail, rather than an internal behavior or a
+   design choice that the document leaves to implementation?
+3. Does the finding have a basis beyond "this requirement is not shown in the diagram"?
+If these conditions are not met, do not report a missing architectural element.
+
+File formats, encodings, timestamps, local logging and internal algorithms do not by themselves
+require additional blocks or interfaces. Do not propose SSD/SD storage, filesystems, log servers or
+SATA/SDIO/NVMe merely because a CPU must write a file.
+Example: TID-019 "CPU shall record track and fault events in a UTF-8 CSV file with UTC timestamps":
+do not report a missing storage or file-writing interface solely because it is not drawn.
+Counterexample: the source explicitly requires CPU to send logs to an external server over Ethernet:
+an omitted server or transfer relationship can support a finding at the modeled level of detail.
+Explicit removable storage can also be relevant when it belongs to the document's decomposition.
+Never guess an unspecified endpoint, protocol or direction to make an omission or proposal concrete.
+
+Keep evidence-backed contradictions between requirements, including contradictions in behavior or
+file format, even when resolving them would not add a block or connection.
+Do not move out-of-scope internal implementation details to missing_information, open_questions,
+open_details or low-severity findings just to avoid omitting them.
+
+LOOK FOR SUPPORTED ISSUES WITHIN THIS SCOPE:
 - contradictory technical statements
-- missing interfaces required by a stated function
-- components that have unexplained or suspiciously incomplete connectivity
+- missing interfaces for source-required interactions across modeled components or system boundaries
+- connectivity that contradicts or omits a source-required relationship at the modeled level of detail
 - specific documented architectural behavior that the architecture may omit
 - interface/protocol inconsistencies
 - system-boundary/classification issues
 - ambiguous statements that materially affect architecture
 
 DO NOT call a common engineering practice an error merely because the document does not state it.
-Instead classify it as missing/ambiguous information when appropriate.
+Report missing/ambiguous information only when it materially affects a source-required architectural
+relationship or a supported documented contradiction; do not ask for every unspecified design detail.
 
 For every finding, cite the exact requirement IDs that support it. Be specific and technically conservative.
 Unlinked source records are not findings by themselves. Headings and context need no diagram counterpart.
