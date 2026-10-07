@@ -167,6 +167,18 @@ def inspect_result(result, entries, architecture, check_proposal):
     return accepted, excluded
 
 
+def review_summary(report):
+    """Describe review coverage separately from acceptance of model output."""
+    incomplete = bool(report.get('remaining_tasks') or any(
+        s.get('status') == 'failed' or s.get('cross_review_incomplete')
+        for s in report.get('sections', [])
+    ) or any(not t.get('feedback') for t in report.get('retry_tasks', [])))
+    coverage = 'Bazı bölümlerin incelemesi tamamlanamadı.' if incomplete else 'Planlanan bölümler incelendi.'
+    accepted = len(report.get('analysis', {}).get('findings', []))
+    excluded = len(report.get('excluded', []))
+    return f'{coverage} {accepted} bulgu kabul edildi; {excluded} bulgu veya öneri kabul edilmedi.'
+
+
 def run_review(client, entries, architecture, check_proposal, checkpoint, tasks=None, seed=None):
     pending = deepcopy(tasks if tasks is not None else plan_review(entries, architecture))
     report = dict(analysis=deepcopy(seed or AnalysisResult().model_dump()), sections=[], excluded=[], retry_tasks=[], remaining_tasks=[], calls=0)
