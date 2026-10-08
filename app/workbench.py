@@ -32,6 +32,21 @@ from .settings import ROOT, load_settings
 from .review_runner import run_review, review_summary
 
 
+class FrontendStaticFiles(StaticFiles):
+    """Serve frontend assets with stable MIME types, independent of OS associations."""
+
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        media_type = {
+            '.js': 'text/javascript',
+            '.mjs': 'text/javascript',
+            '.css': 'text/css',
+        }.get(Path(path).suffix.lower())
+        if media_type and response.status_code in (200, 206, 304):
+            response.headers['Content-Type'] = media_type + '; charset=utf-8'
+        return response
+
+
 class ImportBody(BaseModel):
     path: str = Field(min_length=1)
 
@@ -447,7 +462,7 @@ def create_app(data_dir=None, dist_dir=None):
         return found
 
     if (dist/'assets').exists():
-        api.mount('/assets', StaticFiles(directory=dist/'assets'), name='assets')
+        api.mount('/assets', FrontendStaticFiles(directory=dist/'assets'), name='assets')
 
     @api.get('/')
     def index():
