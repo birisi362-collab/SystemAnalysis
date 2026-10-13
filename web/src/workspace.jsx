@@ -39,6 +39,13 @@ import { pollJob } from "./workbench-api.js";
 import { readableText } from "./review-labels.js";
 import { reviewProgress } from "./review-status.js";
 import "./workspace.css";
+import { useModelSettings, ModelSettings } from "./model-settings.jsx";
+import {
+  ChangePreview,
+  TidPanel,
+  AssumptionsPanel,
+  AssistantPanel,
+} from "./engineering-panels.jsx";
 
 function Workspace({
   project,
@@ -49,6 +56,7 @@ function Workspace({
   history,
   onHistoryClose,
   onEditing,
+  onContextChange,
 }) {
   const [selection, setSelection] = useState(null),
     [sourceId, setSourceId] = useState(null),
@@ -123,6 +131,7 @@ function Workspace({
   const select = (s) =>
     safe(() => {
       setSelection(s);
+      onContextChange(s);
       setRight(true);
       setFocusMode("object");
       const o = architecture[
@@ -134,6 +143,7 @@ function Workspace({
       }
     });
   const source = (id) => {
+    onContextChange({ source_id: id, document: "current" });
     setSourceId(id);
     setLeft(true);
     if (!draft) setFocusMode("source");
@@ -436,20 +446,6 @@ function Workspace({
               />
             )
           )}
-          {!draft && !noteOpen && !!architecture.assumptions.length && (
-            <details className="workspace-assumptions">
-              <summary>Varsayımlar · {architecture.assumptions.length}</summary>
-              {architecture.assumptions.map((text, i) => (
-                <Assumption
-                  key={i + text}
-                  text={text}
-                  onSave={(value) =>
-                    commit("set_assumption", String(i), { text: value })
-                  }
-                />
-              ))}
-            </details>
-          )}
           {!draft &&
             !noteOpen &&
             !!(
@@ -476,7 +472,7 @@ function Workspace({
             {...{ project }}
             onSelect={(s) => {
               if (["component", "connection"].includes(s.kind)) select(s);
-              else if (s.kind === "source") source(s.id);
+              else if (["source", "requirement"].includes(s.kind)) source(s.id);
               else topic(project.topics.find((t) => t.finding_id === s.id)?.id);
               onHistoryClose();
             }}
@@ -486,25 +482,6 @@ function Workspace({
     </>
   );
 }
-function Assumption({ text, onSave }) {
-  const [value, setValue] = useState(text);
-  return (
-    <form
-      onSubmit={async (e) => {
-        e.preventDefault();
-        await onSave(value);
-      }}
-    >
-      <Field label="Varsayım">
-        <textarea value={value} onChange={(e) => setValue(e.target.value)} />
-      </Field>
-      <Button type="submit" disabled={!value.trim() || value === text}>
-        Kaydet
-      </Button>
-    </form>
-  );
-}
-
 export default function App() {
   const [bootstrap, setBootstrap] = useState(null),
     [project, setProject] = useState(null),
@@ -519,6 +496,15 @@ export default function App() {
     [actor, setActor] = useState(
       () => localStorage.getItem("workbench.actor") || "Mühendis",
     );
+  const [preview, setPreview] = useState(null),
+    [previewError, setPreviewError] = useState(""),
+    [assistantRequest, setAssistantRequest] = useState(null),
+    [mainTab, setMainTab] = useState("schema"),
+    [assistantOpen, setAssistantOpen] = useState(false),
+    [selectionContext, setSelectionContext] = useState(null),
+    [settingsOpen, setSettingsOpen] = useState(false);
+  const modelSettings = useModelSettings(bootstrap?.profiles);
+  const previewResolver = useRef(null);
   const lock = useRef(false);
   const refresh = async () => {
     const b = await api("/bootstrap");
@@ -549,13 +535,21 @@ export default function App() {
       })
       .catch((e) => setError(e.message));
   }, []);
+  useEffect(() => {
+    setSelectionContext(null);
+    setAssistantRequest(null);
+  }, [project?.id]);
   useEffect(() => localStorage.setItem("workbench.actor", actor), [actor]);
   useEffect(() => {
     if (!job || !["queued", "running"].includes(job.status)) return;
     return pollJob({
       read: () => api("/jobs/" + job.id),
       onResult: async (j) => {
-        if (["completed", "partial"].includes(j.status) && j.project_id) {
+        if (
+          ["completed", "partial"].includes(j.status) &&
+          j.project_id &&
+          j.mode !== "assistant"
+        ) {
           load(await api("/projects/" + j.project_id));
           await refresh();
         }
@@ -566,7 +560,7 @@ export default function App() {
       onError: (e) => setConnectionError(e.message),
     });
   }, [job?.id, job?.status]);
-  const commit = async (action, id, value, reason = "") => {
+  const directCommit = async (action, id, value, reason = "") => {
     if (lock.current) return false;
     lock.current = true;
     setBusy(true);
@@ -589,6 +583,94 @@ export default function App() {
       lock.current = false;
       setBusy(false);
     }
+  };
+  const onCommands = async (
+    commands,
+    reason = "Mühendis düzenlemesi",
+    version = project.version,
+  ) => {
+    if (lock.current || previewResolver.current) return false;
+    lock.current = true;
+    setBusy(true);
+    setError("");
+    setPreviewError("");
+    try {
+      const result = await api(`/projects/${project.id}/preview`, {
+        version,
+        commands,
+        actor: actor.trim() || "Mühendis",
+        reason: reason || "Mühendis düzenlemesi",
+      });
+      setPreview(result);
+      return await new Promise((resolve) => {
+        previewResolver.current = resolve;
+        lock.current = false;
+        setBusy(false);
+      });
+    } catch (e) {
+      setError(e.message);
+      return false;
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
+  };
+  const commit = (action, id, value, reason = "") =>
+    ["undo", "redo", "layout"].includes(action)
+      ? directCommit(action, id, value, reason)
+      : onCommands(
+          [{ action, id, value, reason }],
+          reason || "Mühendis düzenlemesi",
+        );
+  const closePreview = (result) => {
+    setPreview(null);
+    setPreviewError("");
+    const resolve = previewResolver.current;
+    previewResolver.current = null;
+    resolve?.(result);
+  };
+  const applyChanges = async () => {
+    if (project.version !== preview.version) {
+      setPreviewError("Proje değişti. Güncel sürümde yeniden önizleyin.");
+      return;
+    }
+    if (
+      await directCommit(
+        "apply_change_set",
+        "",
+        { preview_id: preview.id },
+        preview.reason,
+      )
+    )
+      closePreview(true);
+    else
+      setPreviewError(
+        "Değişiklikler uygulanamadı. Projeyi yenileyip tekrar önizleyin.",
+      );
+  };
+  const repreview = async (commands, assumption_reviews = {}) => {
+    setBusy(true);
+    setPreviewError("");
+    try {
+      setPreview(
+        await api(`/projects/${project.id}/preview`, {
+          version: preview.version,
+          commands,
+          assumption_reviews,
+          actor: actor.trim() || "Mühendis",
+          reason: preview.reason,
+        }),
+      );
+    } catch (e) {
+      setPreviewError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const askAssistant = (request) => {
+    setAssistantRequest(request);
+    if (request?.selection) setSelectionContext(request.selection);
+    setAssistantOpen(true);
   };
   const running = job && ["queued", "running"].includes(job.status);
   return (
@@ -641,6 +723,9 @@ export default function App() {
           >
             Belge aç
           </Button>
+          <Button disabled={!bootstrap} onClick={() => setSettingsOpen(true)}>
+            Model Ayarları
+          </Button>
           {project && (
             <>
               <button
@@ -662,7 +747,10 @@ export default function App() {
               <button
                 className="icon-button"
                 aria-label="Geçmişi aç"
-                onClick={() => setDrawer("history")}
+                onClick={() => {
+                  setMainTab("schema");
+                  setDrawer("history");
+                }}
               >
                 <History size={18} />
               </button>
@@ -688,7 +776,7 @@ export default function App() {
           )}
         </div>
       </header>
-      {job && (
+      {job && job.mode !== "assistant" && (
         <div
           className={"studio-job " + (job.status === "failed" ? "failed" : "")}
           role="status"
@@ -716,6 +804,9 @@ export default function App() {
             >
               {stopping ? "Durduruluyor…" : "Değerlendirmeyi durdur"}
             </Button>
+          )}
+          {job.mode === "assistant" && (
+            <Button onClick={() => askAssistant(null)}>Yanıtı aç</Button>
           )}
           {(job.mode === "review" || job.calls !== undefined) && (
             <Button onClick={() => setDrawer("diagnostics")}>
@@ -751,14 +842,113 @@ export default function App() {
         </div>
       )}
       {project ? (
-        <Workspace
-          key={project.id}
-          {...{ project, commit, busy, error }}
-          onError={setError}
-          onEditing={setEditing}
-          history={drawer === "history"}
-          onHistoryClose={() => setDrawer(null)}
-        />
+        <>
+          <nav
+            className="main-tabs"
+            aria-label="Çalışma alanları"
+            role="tablist"
+          >
+            {[
+              ["schema", "Şema"],
+              ["tid", "TİD"],
+              ["assumptions", "Varsayımlar"],
+            ].map(([id, label]) => (
+              <button
+                key={id}
+                id={"tab-" + id}
+                role="tab"
+                aria-selected={mainTab === id}
+                aria-controls={"panel-" + id}
+                onClick={() => setMainTab(id)}
+              >
+                {label}
+                {id === "assumptions" && (
+                  <span>
+                    {
+                      project.state.assumption_records.filter(
+                        (r) =>
+                          r.status === "pending" ||
+                          r.status === "waiting" ||
+                          r.stale,
+                      ).length
+                    }
+                  </span>
+                )}
+              </button>
+            ))}
+          </nav>
+          {error && mainTab !== "schema" && (
+            <p className="banner error" role="alert">
+              {readableText(error, project)}
+            </p>
+          )}
+          <div
+            className="main-tab-panel schema-panel"
+            id="panel-schema"
+            role="tabpanel"
+            aria-labelledby="tab-schema"
+            hidden={mainTab !== "schema"}
+          >
+            <Workspace
+              key={project.id}
+              {...{ project, commit, busy, error }}
+              onError={setError}
+              onContextChange={setSelectionContext}
+              onEditing={setEditing}
+              history={drawer === "history"}
+              onHistoryClose={() => setDrawer(null)}
+            />
+          </div>
+          <div
+            className="main-tab-panel"
+            id="panel-tid"
+            role="tabpanel"
+            aria-labelledby="tab-tid"
+            hidden={mainTab !== "tid"}
+          >
+            <TidPanel
+              key={project.id}
+              {...{ project, busy, onCommands }}
+              onAssistant={askAssistant}
+              onContextChange={setSelectionContext}
+            />
+          </div>
+          <div
+            className="main-tab-panel"
+            id="panel-assumptions"
+            role="tabpanel"
+            aria-labelledby="tab-assumptions"
+            hidden={mainTab !== "assumptions"}
+          >
+            <AssumptionsPanel
+              key={project.id}
+              {...{ project, busy, onCommands }}
+              onAssistant={askAssistant}
+            />
+          </div>
+          {bootstrap && (
+            <AssistantPanel
+              key={project.id}
+              {...{
+                project,
+                bootstrap,
+                actor,
+                job,
+                busy,
+                onCommands,
+                modelSettings,
+                connectionError,
+              }}
+              onJob={setJob}
+              open={assistantOpen}
+              onOpenChange={setAssistantOpen}
+              request={assistantRequest}
+              onRequestHandled={() => setAssistantRequest(null)}
+              context={selectionContext}
+              onClearContext={() => setSelectionContext(null)}
+            />
+          )}
+        </>
       ) : (
         <main className="welcome">
           <div className="welcome-copy">
@@ -788,6 +978,24 @@ export default function App() {
           </div>
         </main>
       )}
+      {preview && (
+        <Drawer
+          title="Değişiklik önizlemesi"
+          className="centered-dialog preview-dialog"
+          onClose={() => {
+            if (!busy) closePreview(false);
+          }}
+        >
+          <ChangePreview
+            key={preview.id}
+            {...{ preview, project, busy }}
+            error={previewError}
+            onApply={applyChanges}
+            onCancel={() => closePreview(false)}
+            onRepreview={repreview}
+          />
+        </Drawer>
+      )}
       {["open", "review"].includes(drawer) && bootstrap && (
         <Drawer
           title={
@@ -798,7 +1006,8 @@ export default function App() {
           onClose={() => setDrawer(null)}
         >
           <StartPanel
-            {...{ bootstrap, project }}
+            {...{ bootstrap, project, modelSettings }}
+            onModelSettings={() => setSettingsOpen(true)}
             reevaluate={drawer === "review"}
             retryJob={drawer === "review" && retryOnly ? job : null}
             onClose={() => setDrawer(null)}
@@ -807,6 +1016,19 @@ export default function App() {
               refresh();
             }}
             onJob={setJob}
+          />
+        </Drawer>
+      )}
+      {settingsOpen && bootstrap && (
+        <Drawer
+          title="Model Ayarları"
+          className="centered-dialog settings-dialog"
+          onClose={() => setSettingsOpen(false)}
+        >
+          <ModelSettings
+            profiles={bootstrap.profiles}
+            modelSettings={modelSettings}
+            onClose={() => setSettingsOpen(false)}
           />
         </Drawer>
       )}

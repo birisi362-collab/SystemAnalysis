@@ -7,6 +7,7 @@ from datetime import datetime
 import io
 import json
 from pathlib import Path
+from typing import Literal
 import secrets
 import tempfile
 import threading
@@ -30,6 +31,9 @@ from .renderer import write_outputs
 from .review_store import ReviewStore, ConflictError, ReviewIntakeError, now
 from .settings import ROOT, load_settings
 from .review_runner import run_review, review_summary
+from .engineering_workspace import current_document, workspace_fingerprint, engineering_context
+from .workspace_assistant import SYSTEM as ASSISTANT_SYSTEM, assistant_prompt, validate_answer
+from .tid_export import export_tid
 
 
 class FrontendStaticFiles(StaticFiles):
@@ -74,6 +78,24 @@ class AnalysisBody(BaseModel):
     api_key: str | None = None
     retry_job_id: str | None = None
 
+class PreviewBody(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    version: int = Field(ge=0)
+    commands: list[dict] = Field(min_length=1, max_length=40)
+    assumption_reviews: dict[str, Literal['review', 'keep']] = Field(default_factory=dict)
+    actor: str = Field(min_length=1, max_length=120)
+    reason: str = Field(default='Mühendis tarafından önizlenen değişiklik', min_length=1, max_length=5000)
+
+
+class AssistantBody(AnalysisBody):
+    version: int = Field(ge=0)
+    message: str = Field(min_length=1, max_length=8000)
+    mode: str = 'chat'
+    actor: str = Field(default='Mühendis', min_length=1, max_length=120)
+    selection: dict = Field(default_factory=dict)
+    pending_commands: list[dict] = Field(default_factory=list, max_length=10)
+
+
 def review_failure(exc):
     code = getattr(exc, 'code', type(exc).__name__)
     messages = {
@@ -83,8 +105,8 @@ def review_failure(exc):
         'AUTHENTICATION':'API anahtarı kabul edilmedi. Seçtiğiniz sağlayıcının geçerli anahtarını girin.',
         'ACCESS_DENIED':'Hesabınızın seçilen modele erişimi yok. Model erişimini kontrol edin veya başka profil seçin.',
         'ENDPOINT_OR_MODEL':'Model veya servis adresi bulunamadı. Profildeki model adını ve adresi kontrol edin.',
-        'TRUNCATED':'Model yanıtı çıktı sınırına ulaştığı için yarıda kesildi. Gelişmiş seçeneklerde çıktı token sınırını artırın.',
-        'TIMEOUT':'Model incelemesi süre sınırını aştı. Gelişmiş seçeneklerde süreyi artırıp yeniden deneyin.',
+        'TRUNCATED':'Model yanıtı çıktı sınırına ulaştığı için yarıda kesildi. Model Ayarları alanında çıktı token sınırını artırın.',
+        'TIMEOUT':'Model incelemesi süre sınırını aştı. Model Ayarları alanında süreyi artırıp yeniden deneyin.',
         'TIME_BUDGET':'Toplam değerlendirme süresi doldu. Tamamlanan sonuçlar saklandı; eksik bölümleri yeniden deneyebilirsiniz.',
         'CANCELLED':'Değerlendirme durduruldu. Tamamlanan sonuçlar ve kalan bölümler saklandı.',
         'TLS_RUNTIME':'Python güvenli bağlantı ortamı durdu. Uygulama korunuyor; run_app.bat ile doğrulanmış ortamda yeniden açın.',
@@ -99,6 +121,7 @@ def review_failure(exc):
         'OBJECT_UNKNOWN':'Model şemada bulunmayan bir öğeye başvurdu. Kullanılamayan sonuç teşhis kaydında saklandı.',
         'CALL_LIMIT':'Kalan bölümler çağrı sınırı nedeniyle incelenmedi. Eksik bölümleri yeniden deneyebilirsiniz.',
         'EMPTY_CONTENT':'Model kullanılabilir bir sonuç döndürmedi. Yeniden deneyin veya başka profil seçin.',
+        'INPUT_BUDGET':'Proje sohbet bağlamı sınırını aşıyor. Bu sürüm en fazla 120.000 karakterlik proje bağlamını birlikte inceleyebilir.',
         'SCHEMA':'Model yanıtı beklenen inceleme biçimine uymuyor. Yeniden deneyin veya farklı profil seçin.',
         'ValidationError':'Model yanıtı beklenen inceleme biçimine uymuyor. Yeniden deneyin veya farklı profil seçin.',
         'UnicodeEncodeError':'İstek ayarlarında kodlanamayan bir karakter var. API anahtarını, model adını ve servis adresini yeniden kontrol edin.',
@@ -185,7 +208,7 @@ def create_app(data_dir=None, dist_dir=None):
         result = []
         for path in sorted((ROOT/'profiles').glob('*.json')):
             cfg = load_settings(path)
-            result.append(dict(id=path.stem, model=cfg.get('model', ''), base_url=cfg.get('base_url', ''), has_key=bool(cfg.get('api_key')), timeout=cfg.get('timeout', 180)))
+            result.append(dict(id=path.stem, model=cfg.get('model', ''), base_url=cfg.get('base_url', ''), has_key=bool(cfg.get('api_key')), timeout=cfg.get('timeout', 600), max_tokens=cfg.get('max_tokens', 8192)))
         return result
 
     @api.get('/api/bootstrap')
@@ -218,18 +241,102 @@ def create_app(data_dir=None, dist_dir=None):
     def change(pid: str, body: Command):
         return store.mutate(pid, body.model_dump())
 
+    @api.post('/api/projects/{pid}/preview')
+    def preview(pid: str, body: PreviewBody):
+        return store.preview(pid, body.version, body.commands, body.actor, body.reason, body.assumption_reviews)
+
+    @api.get('/api/projects/{pid}/tid')
+    def download_tid(pid: str, format: str = 'docx', original: bool = False):
+        project = store.get(pid)
+        data = export_tid(project, format, original=original)
+        media = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' if format=='docx' else 'text/plain; charset=utf-8'
+        filename = 'TID_orijinal' if original else f'TID_calisma_v{project["state"]["document_revision"]}'
+        return Response(data, media_type=media, headers={'Content-Disposition':f'attachment; filename="{filename}.{format}"'})
+
+    @api.get('/api/projects/{pid}/conversation')
+    def conversation(pid: str):
+        store.get(pid)
+        return store.conversation(pid)
+
+    @api.post('/api/projects/{pid}/assistant')
+    def assistant(pid: str, body: AssistantBody):
+        project = store.get(pid)
+        if project['version'] != body.version:
+            raise ConflictError('Çalışma değişti. Güncel sürümü açıp sorunuzu yeniden gönderin.')
+        if body.mode not in ('chat', 'tid', 'assumption'):
+            raise ValueError('Geçersiz sohbet modu.')
+        if body.profile not in {p['id'] for p in profiles()}:
+            raise ValueError('Model profili bulunamadı.')
+        if any(c.get('action') != 'upsert_assumption' for c in body.pending_commands):
+            raise ValueError('Bekleyen karar yalnızca varsayım düzenlemesi olabilir.')
+        effective = deepcopy(project)
+        if body.pending_commands:
+            effective['state'] = store.apply_commands(project['state'], project['original'], body.pending_commands, body.actor, body.message)
+        try:
+            prompt = assistant_prompt(effective, body.message, body.mode, store.conversation(pid), body.selection, body.pending_commands)
+        except LLMError as exc:
+            raise ValueError(str(exc)) from exc
+        cfg = load_settings(ROOT/f'profiles/{body.profile}.json')
+        cfg.update(timeout=body.timeout, max_tokens=body.max_tokens)
+        for key in ('base_url','model','api_key'):
+            if getattr(body,key): cfg[key] = getattr(body,key)
+        if 'YOUR-' in cfg.get('model', '') or 'YOUR-' in cfg.get('base_url', ''):
+            raise ValueError('İç ağ profili için gerçek sunucu ve model bilgisini girin.')
+        with job_lock:
+            if any(j['status'] in ('queued','running') for j in store.jobs()):
+                raise HTTPException(409, 'Bir model işlemi zaten çalışıyor. Tamamlanmasını bekleyin.')
+            jid = uuid.uuid4().hex
+            turn = dict(id=jid, message=body.message, mode=body.mode, version=body.version,
+                        actor=body.actor, created=now(), status='queued', result=None)
+            job = dict(id=jid, created=now(), project_id=pid, mode='assistant', status='queued',
+                       message='Proje asistanı yanıt hazırlıyor.', timeout=body.timeout,
+                       profile=body.profile, model=cfg.get('model'), base_version=body.version)
+            store.save_conversation(pid, turn); store.save_job(job)
+            controls[jid] = threading.Event()
+
+        def worker_assistant():
+            try:
+                job.update(status='running', started_at=now()); store.save_job(job)
+                client = LLMClient(**cfg, isolate=True, cancel_event=controls[jid], deadline=time.monotonic()+cfg['timeout'])
+                result = validate_answer(client.extract_json(ASSISTANT_SYSTEM, prompt), effective, body.mode)
+                commands = body.pending_commands + result['commands']
+                result['commands'] = commands
+                if commands:
+                    try:
+                        pending_ids = {c['value']['id'] for c in body.pending_commands}
+                        if any(c.get('action')=='upsert_assumption' and c.get('value', {}).get('id') in pending_ids for c in result['commands'][len(body.pending_commands):]):
+                            raise ValueError('Model bekleyen mühendis kararını yeniden yazamaz. Kararınızı koruyarak yeni öneri isteyin.')
+                        result['preview'] = store.preview(pid, body.version, commands, body.actor, body.message)
+                    except (ValueError, KeyError) as exc:
+                        result['proposal_error'] = 'Önerinin alanları eksik veya geçersiz. Düzenlemeyi daha açık tanımlayarak yeniden isteyin.' if isinstance(exc, ValidationError) else 'Öneri uygulanabilir değil: '+str(exc)
+                turn.update(status='completed', result=result)
+                job.update(status='completed', message='Asistan yanıtı hazır. Önerileri sohbet panelinde inceleyin.')
+            except Exception as exc:
+                code, message = review_failure(exc)
+                job.update(status='cancelled' if code=='CANCELLED' else 'failed', error_code=code, message=message)
+                turn.update(status=job['status'], error=message)
+            finally:
+                job['finished_at'] = now()
+                store.save_conversation(pid, turn); store.save_job(job)
+                controls.pop(jid, None); cfg.pop('api_key', None)
+        executor.submit(worker_assistant)
+        return job
+
     @api.get('/api/projects/{pid}/export')
     def export(pid: str):
         project = store.get(pid)
         state = project['state']
-        final = FinalModel.model_validate({**project['original'], 'architecture': state['architecture'], 'analysis': state['analysis'], 'validation_issues': [{k:v for k,v in i.items() if k in {'severity','code','message','related_id','source_id','object_id','finding_id'}} for i in project['issues']]})
+        final = FinalModel.model_validate({**current_document(project['original'], state), 'architecture': state['architecture'], 'analysis': state['analysis'], 'validation_issues': [{k:v for k,v in i.items() if k in {'severity','code','message','related_id','source_id','object_id','finding_id'}} for i in project['issues']]})
         final.run_metadata.update(engineering_review_version=project['version'], original_sha256=project['origin_hash'], human_review_required=True)
         final.run_metadata.pop('validation_error_count', None)
         final.run_metadata['validation_mode'] = 'editing_integrity_only'
         content = io.BytesIO()
         with tempfile.TemporaryDirectory() as directory:
             write_outputs(final, directory)
+            project['conversation'] = store.conversation(pid)
             root = Path(directory)
+            (root/'TID_calisma.docx').write_bytes(export_tid(project))
+            (root/'TID_calisma.txt').write_bytes(export_tid(project, 'txt'))
             (root/'original_analysis_result.json').write_text(json.dumps(project['original'], ensure_ascii=False, indent=2), encoding='utf-8')
             (root/'engineering_review.json').write_text(json.dumps(project, ensure_ascii=False, indent=2), encoding='utf-8')
             (root/'OKU.txt').write_text('analysis_result ve şema dosyaları mühendis çalışma kopyasıdır. original_analysis_result değişmez model çıktısıdır. Kararlar, varsayımlar, yerleşim ve değişiklik geçmişi engineering_review.json içindedir. Onaylar alan bazındadır; dışa aktarma mühendis onayı anlamına gelmez.', encoding='utf-8')
@@ -286,7 +393,7 @@ def create_app(data_dir=None, dist_dir=None):
                 if report_path.exists():
                     report=json.loads(report_path.read_text(encoding='utf-8'))
                     job['message'] = 'Mimari hazır. ' + review_summary(report)
-                    job.update(review_report=report, calls=report['calls'], accepted_findings=len(report['analysis']['findings']), excluded_findings=len(report['excluded']), added_findings=len(report['analysis']['findings']), can_retry_missing=bool(report['retry_tasks']), architecture_fingerprint=fingerprint(project['state']['architecture']))
+                    job.update(review_report=report, calls=report['calls'], accepted_findings=len(report['analysis']['findings']), excluded_findings=len(report['excluded']), added_findings=len(report['analysis']['findings']), can_retry_missing=bool(report['retry_tasks']), architecture_fingerprint=fingerprint(project['state']['architecture']), workspace_fingerprint=workspace_fingerprint(project['state']))
                     calls=[c for s in report['sections'] for c in s.get('transport',[])]
                     job['token_usage']={k:sum((c.get('usage') or {}).get(k,0) or 0 for c in calls) for k in ('prompt_tokens','completion_tokens','total_tokens')}
                     failure=next((s for s in reversed(report['sections']) if s.get('error_code')),None)
@@ -352,20 +459,21 @@ def create_app(data_dir=None, dist_dir=None):
         cfg.update(timeout=body.timeout, max_tokens=body.max_tokens)
         for key in ('base_url','model','api_key'):
             if getattr(body,key): cfg[key] = getattr(body,key)
-        entries = [RequirementEntry(**s) for s in project['original']['source_catalog']]
+        entries = [RequirementEntry(**s) for s in project['state']['source_catalog']]
         architecture = ArchitectureModel.model_validate(project['state']['architecture'])
         base_fingerprint = fingerprint(project['state']['architecture'])
+        base_workspace = workspace_fingerprint(project['state'])
         previous = None
         if body.retry_job_id:
             previous = next((j for j in store.jobs() if j['id'] == body.retry_job_id), None)
             if not previous or previous.get('project_id') != pid or not (previous.get('review_report', {}).get('retry_tasks') or previous.get('review_report', {}).get('finalization_pending')):
                 raise ValueError('Yeniden denenebilecek eksik değerlendirme bulunamadı.')
-            if previous.get('architecture_fingerprint') != base_fingerprint:
+            if previous.get('architecture_fingerprint') != base_fingerprint or (previous.get('workspace_fingerprint') and previous['workspace_fingerprint'] != base_workspace):
                 raise ConflictError('Tasarım değişti. Eksik bölümler yerine güncel tasarım için yeni değerlendirme başlatın.')
         with job_lock:
             if any(j['status'] in ('queued','running') for j in store.jobs()):
                 raise HTTPException(409, 'Bir analiz zaten çalışıyor.')
-            job = dict(id=uuid.uuid4().hex, created=now(), status='queued', project_id=pid, message='Güncel tasarım değerlendiriliyor.', mode='review', max_tokens=cfg['max_tokens'], timeout=cfg['timeout'], architecture_fingerprint=base_fingerprint, previous_job_id=body.retry_job_id, profile=body.profile, model=cfg.get('model'))
+            job = dict(id=uuid.uuid4().hex, created=now(), status='queued', project_id=pid, message='Güncel tasarım değerlendiriliyor.', mode='review', max_tokens=cfg['max_tokens'], timeout=cfg['timeout'], architecture_fingerprint=base_fingerprint, workspace_fingerprint=base_workspace, previous_job_id=body.retry_job_id, profile=body.profile, model=cfg.get('model'))
             controls[job['id']]=threading.Event()
             store.save_job(job)
         def worker_review():
@@ -389,14 +497,14 @@ def create_app(data_dir=None, dist_dir=None):
                 prior = previous.get('review_report') if previous else None
                 # No saved section means a crash happened before any result: use the current compact plan.
                 retry_tasks=prior['retry_tasks'] if prior and prior['sections'] else None
-                report = run_review(client, entries, architecture, check_proposal, checkpoint, tasks=retry_tasks, seed=prior['analysis'] if prior else None)
+                report = run_review(client, entries, architecture, check_proposal, checkpoint, tasks=retry_tasks, seed=prior['analysis'] if prior else None, decision_context=engineering_context(project['state']))
                 if prior:
                     report['sections'].extend(s for s in prior['sections'] if s.get('error_code') == 'CROSS_REVIEW_LIMIT')
                 checkpoint(report, 'Kullanılabilir bulgular kaydediliyor.')
                 answered = any(s['status'] in ('completed', 'partial') for s in report['sections']) or bool(prior and prior.get('finalization_pending') and not prior['retry_tasks'])
                 if answered:
                     current = store.get(pid)
-                    updated = store.mutate(pid, dict(action='append_review', id='', actor='Yapay zekâ', reason='Mühendisin başlattığı değerlendirme', version=current['version'], value={'analysis':report['analysis'], 'architecture_fingerprint':base_fingerprint}))
+                    updated = store.mutate(pid, dict(action='append_review', id='', actor='Yapay zekâ', reason='Mühendisin başlattığı değerlendirme', version=current['version'], value={'analysis':report['analysis'], 'architecture_fingerprint':base_fingerprint, 'workspace_fingerprint':base_workspace}))
                     job['added_findings'] = len(updated['state']['analysis']['findings']) - len(current['state']['analysis']['findings'])
                 incomplete = bool(report['retry_tasks'] or report['excluded'] or any(s.get('cross_review_incomplete') or s['status']=='failed' for s in report['sections']))
                 if not answered:
@@ -416,7 +524,7 @@ def create_app(data_dir=None, dist_dir=None):
             except Exception as exc:
                 code, message = review_failure(exc)
                 if code == 'TRUNCATED':
-                    message = f"İnceleme yanıtı {cfg['max_tokens']:,} token sınırında yarıda kesildi. Gelişmiş seçeneklerde çıktı token sınırını artırıp yeniden deneyin. Mevcut tasarım ve mühendis kararları korundu."
+                    message = f"İnceleme yanıtı {cfg['max_tokens']:,} token sınırında yarıda kesildi. Model Ayarları alanında çıktı token sınırını artırıp yeniden deneyin. Mevcut tasarım ve mühendis kararları korundu."
                 job.update(status='failed', error_code=code, message=message)
                 job['failure_detail'] = dict(code=code, message=str(exc) if isinstance(exc, (ConflictError, ReviewIntakeError, LLMError)) else 'Sonuç uygulamada işlenirken hata oluştu.', frames=[dict(file=Path(f.filename).name, line=f.lineno, function=f.name) for f in traceback.extract_tb(exc.__traceback__)])
             finally:

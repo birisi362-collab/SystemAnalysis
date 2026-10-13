@@ -51,6 +51,24 @@ Başka bir servis varsayılan portu kullanıyorsa farklı port seçebilirsiniz. 
 
 Ana çalışma alanı otomatik validasyon uyarılarını çözme veya kaynak ilişkilerini tek tek kanıtlama üzerine kurulmaz. Model yanıtındaki biçim, kaynak alıntısı ve öğe kimliği sorunları uygulama içinde denetlenir; kullanılamayan sonuçlar **Değerlendirme ayrıntıları** içinde açıklanır.
 
+## TİD, varsayımlar ve proje asistanı
+
+Üstteki **Şema · TİD · Varsayımlar** ana sekmeleri çalışma alanlarını ayırır. Orijinal belge korunur; yeni değerlendirmeler güncel TİD çalışma sürümünü, mimariyi ve mühendis kararlarını birlikte kullanır.
+
+- **TİD:** Bölüm başlıkları ve aramayla geniş belge alanında çalışın. Bir maddeyi seçip **Düzenle** ile değiştirin; çalışma sürümünü veya orijinal belgeden alınan metni Word/TXT olarak indirin. **Şemaya göre güncelleme öner** asistan konuşmasına bir istek hazırlar. Her şema değişikliği ister değişikliği gerektirmez.
+- **Varsayımlar:** Başlıklar varsayım metnidir; sistem kimlikleri arayüzde gösterilmez. **İnceleme bekleyen / Kabul edilen / Reddedilen / Tümü** filtreleri ve adetleri vardır. Yeniden inceleme gereken eski kararlar hem ilgili karar filtresinde hem inceleme bekleyenlerde görünür. **Kabul et / Reddet** ile gerekçenizi ve varsa doğru bilgiyi girin; kararı önizleyip uygulayın. Karar sonrası ilgili filtre açılarak kaydedilen durum gösterilir.
+- **Karar ve etkileri:** Kararı kaydetmek şemayı veya TİD’i kendiliğinden değiştirmez. Kaydedilen kararın **Şema ve TİD etkilerini öner** düğmesi gerekli düzenlemeleri hazırlamak için asistana istek aktarır. Öneri ayrıca önizlenir ve onayla uygulanır. Doğru alternatif bilinmiyorsa asistan bunu uydurmamalıdır.
+- **Yeniden inceleme:** Kararlar yalnızca ilgili teknik dayanaklarla takip edilir. İlgili öğeler belirtilmemişse varsayım tüm projeye bağlı sayılmaz. Yerleşim, bileşenin görüntüleme adı, bölüm adı, liste sırası ve boşluk düzenlemeleri kararları yeniden açmaz. İlgili teknik içerik değiştiğinde eski karar ve gerekçe korunarak **Yeniden inceleme gerekli** uyarısı çıkar.
+- **Önizleme:** Geniş, ortalanmış pencerede gerekçe, etkilenen öğeler ve önce/sonra karşılaştırması bulunur. Şema/TİD değişikliğinde her kararlı varsayım için **Yeniden değerlendir / Yeniden değerlendirmeye gerek yok** seçilebilir; **Diğer varsayımları da göster** ile otomatik olarak etkilenmeyenler de incelemeye açılabilir. Seçim değişince **Düzenlemeleri yeniden önizle**, ardından **Değişiklikleri uygula** kullanılır. “Gerek yok” yalnızca o değişikliği kapsar; sonraki ilgili teknik değişiklik yeniden inceleme gerektirebilir. Seçimler kaydedilir, dışa aktarılır ve geri alma/yineleme ile birlikte korunur.
+- **Asistan:** Sağ alttaki düğme kompakt sohbet penceresini açar. Pencere daraltılıp büyütülebilir; sekmeler arasında konuşma ve mesaj taslağı korunur. Şemada öğe seçmek veya TİD’den metin seçmek kaldırılabilir bir bağlam etiketi ekler. Soru ve düzenleme isteği aynı mesaj alanından gönderilir; çalışma modu seçimi yoktur. Model önerileri kendiliğinden uygulanmaz.
+- **Model Ayarları:** Model profili, sunucu, API anahtarı, süre ve çıktı sınırı tek genel alanda yönetilir; analiz, yeniden değerlendirme ve sohbet bu ayarları paylaşır. Sohbette yalnızca model seçimi bulunur. Buraya girilen anahtar sayfa oturumunun belleğinde kalır, tarayıcı depolamasına veya çalışma paketine yazılmaz. Kalıcı anahtar için mevcut yerel profil/ortam ayarları kullanılabilir; diğer tercihler tarayıcıda korunur.
+
+TİD maddesi değiştiğinde o maddeye bağlı eski alıntılar korunur ve yeniden incelenmesi gereken dayanak olarak işaretlenir. İlgili şema öğesini düzenleyerek güncel kaynağı seçebilirsiniz. Kabul edilmiş varsayım, orijinal TİD’de yazan bir ister olarak gösterilmez.
+
+Eski analizleri veya çalışma ZIP paketlerini **Belge aç** üzerinden modelden yeniden çıktı beklemeden kullanabilirsiniz. Eski yerel kararların dayanakları aktif revizyon geçmişinden okunur; dayanağı bulunamayan eski paketlerde kararın yeniden doğrulanması istenir.
+
+Model işlemleri iptal edilebilir; aynı anda bir model işi çalışır. Sohbet bağlamı en fazla 120.000 karakterdir; sınır aşılırsa açıklama gösterilir. Son sekiz sohbet turu model bağlamına alınır; bütün sohbet geçmişi yerel kayıtta ve çalışma ZIP paketinde korunur. Taşınan eski öneriler tarihçe olarak gösterilir; uygulanmak için güncel projede yeniden istenmelidir.
+
 ## Değerlendirme süresi ve hata durumları
 
 **Bağlantı ve gelişmiş seçenekler** içinde iki ayrı sınır bulunur:
@@ -76,7 +94,7 @@ Ayrıntılı açıklama: **[Değerlendirme ve teşhis](docs/DEGERLENDIRME_TEHSIS
 
 Çalışmalar ve mühendis değişiklikleri varsayılan olarak **`workbench_data/reviews.sqlite3`** içinde kalıcı tutulur. İlk model çıktısı başlangıç kaydı olarak korunur. Yeni analizlerin çıktı dosyaları `outputs` klasöründe oluşur.
 
-Üst çubuktaki **Çalışmayı dışa aktar** düğmesi çalışma ZIP paketini indirir. Paket güncel şemayı, özgün model çıktısını, mühendis kararlarını, yerleşimi ve değişiklik geçmişini içerir. Başka bilgisayarda uygulamayı kurduktan sonra **Belge aç** ile bu ZIP paketini açabilirsiniz. Tüm yerel arşivi taşımak için uygulama kapalıyken `workbench_data` klasörünü yedekleyip kopyalayabilirsiniz.
+Üst çubuktaki **Çalışmayı dışa aktar** düğmesi çalışma ZIP paketini indirir. Paket güncel şemayı, özgün model çıktısını, TİD çalışma sürümünü (DOCX/TXT), varsayımları, mühendis kararlarını, sohbeti, yerleşimi ve değişiklik geçmişini içerir. Başka bilgisayarda uygulamayı kurduktan sonra **Belge aç** ile bu ZIP paketini açabilirsiniz. Tüm yerel arşivi taşımak için uygulama kapalıyken `workbench_data` klasörünü yedekleyip kopyalayabilirsiniz.
 
 GitHub kaynak kodunu ve hazır arayüzü taşır. `.env`, sanal ortamlar, `workbench_data`, `outputs` ve `reports` GitHub'a gönderilmez. Çalışma paketleri ve teşhis dosyaları kaynak belge içeriğini barındırabilir.
 
@@ -128,6 +146,7 @@ Ek geliştirici araçları, çevrimdışı örnekler, kayıtlı yanıt replay ve
 | `run_app.bat`, `run_workbench.py` | Uygulama başlatıcıları |
 | `app/workbench.py` | Yerel API ve analiz işleri |
 | `app/review_store.py` | Kalıcı projeler, mühendis değişiklikleri ve geçmiş |
+| `app/engineering_workspace.py`, `app/workspace_assistant.py`, `app/tid_export.py` | TİD ve varsayım kayıtları, değişiklik etkileri, proje asistanı ve doküman çıktıları |
 | `app/review_runner.py` | Bölümlü ve sürdürülebilir model değerlendirmesi |
 | `app/llm_client.py`, `app/llm_worker.py` | Model bağlantısı, işlem yalıtımı ve süre/iptal yönetimi |
 | `web/src` | Etkileşimli arayüz kaynakları |

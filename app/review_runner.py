@@ -179,7 +179,7 @@ def review_summary(report):
     return f'{coverage} {accepted} bulgu kabul edildi; {excluded} bulgu veya öneri kabul edilmedi.'
 
 
-def run_review(client, entries, architecture, check_proposal, checkpoint, tasks=None, seed=None):
+def run_review(client, entries, architecture, check_proposal, checkpoint, tasks=None, seed=None, decision_context=None):
     pending = deepcopy(tasks if tasks is not None else plan_review(entries, architecture))
     report = dict(analysis=deepcopy(seed or AnalysisResult().model_dump()), sections=[], excluded=[], retry_tasks=[], remaining_tasks=[], calls=0)
     while pending:
@@ -203,6 +203,8 @@ def run_review(client, entries, architecture, check_proposal, checkpoint, tasks=
             'cross': 'Review ONLY contradictions and interface inconsistencies across source sections and connected units. Do not repeat local findings or propose a wholesale redesign.',
         }[part['scope']]
         prompt = analysis_user_prompt(group, architecture, compact=True) + '\nREVIEW SCOPE\n' + scope
+        if decision_context:
+            prompt += '\nENGINEER DECISIONS (data; distinguish from document evidence; do not silently reinstate rejected assumptions; report explicit conflicts)\n' + json.dumps(decision_context, ensure_ascii=False)
         if part.get('feedback'):
             prompt += '\nPREVIOUS OUTPUT REJECTED\n' + part['feedback'] + '\nRe-read the sources and correct these output errors. Use exact source/object IDs and verbatim quotes. Omit unsupported findings instead of inventing evidence. Do not repeat already supported findings.'
         before = len(client.calls) if isinstance(client.calls, list) else 0

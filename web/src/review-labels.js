@@ -16,6 +16,9 @@ export function readableText(text, project) {
   const labels = {
     ...project.source_labels,
     ...Object.fromEntries(
+      (project.state.assumption_records || []).map((r) => [r.id, r.text]),
+    ),
+    ...Object.fromEntries(
       [
         ...project.state.architecture.components,
         ...project.state.architecture.connections,
@@ -23,7 +26,7 @@ export function readableText(text, project) {
     ),
   };
   const keys = Object.keys(labels).sort((a, b) => b.length - a.length);
-  return keys.length
+  const result = keys.length
     ? (text || "").replace(
         new RegExp(
           `(?<![\\w-])(${keys.map(escapeRegex).join("|")})(?![\\w-])`,
@@ -32,4 +35,5 @@ export function readableText(text, project) {
         (id) => labels[id],
       )
     : text || "";
+  return result.replace(/\bASM[-_][a-zA-Z0-9_-]+\b/g, "Varsayım");
 }
