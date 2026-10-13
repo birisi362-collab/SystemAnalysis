@@ -51,6 +51,24 @@ Başka bir servis varsayılan portu kullanıyorsa farklı port seçebilirsiniz. 
 
 Ana çalışma alanı otomatik validasyon uyarılarını çözme veya kaynak ilişkilerini tek tek kanıtlama üzerine kurulmaz. Model yanıtındaki biçim, kaynak alıntısı ve öğe kimliği sorunları uygulama içinde denetlenir; kullanılamayan sonuçlar **Değerlendirme ayrıntıları** içinde açıklanır.
 
+## TİD, varsayımlar ve proje asistanı
+
+Üst çubuktaki **TİD ve kararlar** alanı TİD'in çalışma sürümünü ve varsayımları yönetir. Özgün kaynak belge korunur. Yeni değerlendirmeler güncel TİD çalışma sürümünü, mimariyi ve mühendis kararlarını birlikte kullanır.
+
+- **TİD:** Madde ekleyin, mevcut metni düzenleyin veya kaldırmayı önizleyin. Kalıcı ister kimlikleri korunur. **Word indir / TXT indir** güncel kaynak maddelerinden yeni bir doküman oluşturur; yüklenen Word dosyasının özgün sayfa ve tablo düzenini kopyalamaz.
+- **TİD güncellemesi öner:** Asistan mimari düzenlemelerini güncel isterlerle karşılaştırır ve hedefli TİD değişiklikleri önerir. Her tasarım düzenlemesi ister değişikliği gerektirmez. Mevcut davranış/performans isterleri sırf şemada gösterilmiyor diye kaldırılmamalıdır.
+- **Varsayımlar:** Bekliyor, kabul, ret veya bilgi bekliyor durumunu; karar gerekçesini ve alternatif bilgiyi kaydedin. İlgili ister, bileşen ve bağlantıları seçin. Bağlantı seçilmemiş eski varsayımlar bütün proje kapsamında takip edilir. İlgili bilgi değiştiğinde karar yeniden incelemeye açılır.
+- **Karar ve etkilerini öner:** Henüz kaydedilmemiş varsayım kararı ile önerilen şema/TİD düzenlemeleri tek pakette önizlenir. Sadece ret kararı vermek bir bağlantıyı otomatik silmez; doğru alternatif bilinmiyorsa konu açık kalır.
+- **Asistan:** TİD, güncel mimari, bulgular ve mühendis kararları hakkında soru sorun veya düzenleme isteyin. Özgün TİD ile çalışma sürümünden yapılan alıntılar ayrı gösterilir ve metinle karşılaştırılır. Şemada seçili öğeyi **Seçili öğeyi asistana sor** ile bağlama ekleyebilirsiniz.
+
+İçerik düzenlemeleri **Değişiklik önizlemesi** penceresinde eski–yeni alanlar ve etkilenen kayıtlarla gösterilir. **Öneriyi düzenle** ile değerleri değiştirdikten sonra yeniden önizleyin; **Değişiklikleri uygula** paketi tek revizyonda kaydeder. Geri al/yinele bütün pakete uygulanır. Proje önizlemeden sonra değiştiyse eski öneri uygulanamaz. Şema yerleşimi bu içerik önizlemesini gerektirmez.
+
+TİD maddesi değiştiğinde o maddeye bağlı eski alıntılar korunur ve yeniden incelenmesi gereken dayanak olarak işaretlenir. İlgili şema öğesini düzenleyerek güncel kaynağı seçebilirsiniz. Kabul edilmiş varsayım, özgün TİD'de yazan bir ister olarak gösterilmez.
+
+Asistan mevcut model profillerini kullanır; **Model bağlantısı** bölümünden şirket iç ağı profilini ve gerekirse sunucu/model adını seçin. API anahtarı sohbet veya proje paketine kaydedilmez. Model işlemleri iptal edilebilir; uygulama aynı anda bir model işi çalıştırır. Bu sürümde sohbet bağlamı en fazla 120.000 karakterdir; aşılırsa sessizce metin kesmek yerine açıklama gösterilir. Son sekiz sohbet turu bağlama alınır; bütün sohbet geçmişi yerel kayıtta ve çalışma ZIP paketinde korunur. Taşınan eski sohbet önerileri tarihçe olarak gösterilir; yeni projede uygulanmak için yeniden istenmelidir.
+
+Model önerilerinin mühendislik doğruluğu mühendis tarafından incelenmelidir. Kaynak alıntısının bulunması, önerinin teknik olarak doğru olduğunu tek başına kanıtlamaz.
+
 ## Değerlendirme süresi ve hata durumları
 
 **Bağlantı ve gelişmiş seçenekler** içinde iki ayrı sınır bulunur:
@@ -76,7 +94,7 @@ Ayrıntılı açıklama: **[Değerlendirme ve teşhis](docs/DEGERLENDIRME_TEHSIS
 
 Çalışmalar ve mühendis değişiklikleri varsayılan olarak **`workbench_data/reviews.sqlite3`** içinde kalıcı tutulur. İlk model çıktısı başlangıç kaydı olarak korunur. Yeni analizlerin çıktı dosyaları `outputs` klasöründe oluşur.
 
-Üst çubuktaki **Çalışmayı dışa aktar** düğmesi çalışma ZIP paketini indirir. Paket güncel şemayı, özgün model çıktısını, mühendis kararlarını, yerleşimi ve değişiklik geçmişini içerir. Başka bilgisayarda uygulamayı kurduktan sonra **Belge aç** ile bu ZIP paketini açabilirsiniz. Tüm yerel arşivi taşımak için uygulama kapalıyken `workbench_data` klasörünü yedekleyip kopyalayabilirsiniz.
+Üst çubuktaki **Çalışmayı dışa aktar** düğmesi çalışma ZIP paketini indirir. Paket güncel şemayı, özgün model çıktısını, TİD çalışma sürümünü (DOCX/TXT), varsayımları, mühendis kararlarını, sohbeti, yerleşimi ve değişiklik geçmişini içerir. Başka bilgisayarda uygulamayı kurduktan sonra **Belge aç** ile bu ZIP paketini açabilirsiniz. Tüm yerel arşivi taşımak için uygulama kapalıyken `workbench_data` klasörünü yedekleyip kopyalayabilirsiniz.
 
 GitHub kaynak kodunu ve hazır arayüzü taşır. `.env`, sanal ortamlar, `workbench_data`, `outputs` ve `reports` GitHub'a gönderilmez. Çalışma paketleri ve teşhis dosyaları kaynak belge içeriğini barındırabilir.
 
@@ -128,6 +146,7 @@ Ek geliştirici araçları, çevrimdışı örnekler, kayıtlı yanıt replay ve
 | `run_app.bat`, `run_workbench.py` | Uygulama başlatıcıları |
 | `app/workbench.py` | Yerel API ve analiz işleri |
 | `app/review_store.py` | Kalıcı projeler, mühendis değişiklikleri ve geçmiş |
+| `app/engineering_workspace.py`, `app/workspace_assistant.py`, `app/tid_export.py` | TİD ve varsayım kayıtları, değişiklik etkileri, proje asistanı ve doküman çıktıları |
 | `app/review_runner.py` | Bölümlü ve sürdürülebilir model değerlendirmesi |
 | `app/llm_client.py`, `app/llm_worker.py` | Model bağlantısı, işlem yalıtımı ve süre/iptal yönetimi |
 | `web/src` | Etkileşimli arayüz kaynakları |

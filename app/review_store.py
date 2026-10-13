@@ -15,6 +15,8 @@ from .validator import validate_architecture, normalize
 from .source_relations import source_relations
 from .review_topics import build_topics, source_labels, proposal_context, fingerprint
 from .review_runner import finding_key
+from .engineering_workspace import (upgrade_state, current_document, SourceEdit, AssumptionRecord,
+                                    assumption_basis, impact_summary, workspace_fingerprint)
 
 
 def now():
@@ -114,6 +116,8 @@ class ReviewStore:
             CREATE TABLE IF NOT EXISTS revisions(project_id TEXT NOT NULL, seq INTEGER NOT NULL, parent INTEGER, state TEXT NOT NULL, PRIMARY KEY(project_id,seq));
             CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY AUTOINCREMENT, project_id TEXT NOT NULL, action TEXT NOT NULL, actor TEXT NOT NULL, reason TEXT NOT NULL, at TEXT NOT NULL, revision INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY, payload TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS change_previews(id TEXT PRIMARY KEY, project_id TEXT NOT NULL, version INTEGER NOT NULL, commands TEXT NOT NULL, actor TEXT NOT NULL, reason TEXT NOT NULL, created TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS conversations(project_id TEXT NOT NULL, id TEXT PRIMARY KEY, payload TEXT NOT NULL);
             ''')
 
     @contextmanager
@@ -133,6 +137,8 @@ class ReviewStore:
         raw = path.read_bytes()
         final = FinalModel.model_validate_json(raw)
         original = final.model_dump()
+        if len({x['requirement_id'] for x in original['source_catalog']}) != len(original['source_catalog']):
+            raise ValueError('Kaynak kimlikleri benzersiz olmalı.')
         if len({x.id for x in final.architecture.components + final.architecture.connections}) != len(final.architecture.components + final.architecture.connections):
             raise ValueError('Şemada yinelenen nesne kimliği var. İçe aktarmadan önce kimliklerin benzersiz olması gerekir.')
         pid = uuid.uuid4().hex
@@ -154,8 +160,8 @@ class ReviewStore:
 
     def restore_snapshot(self, snapshot):
         original = FinalModel.model_validate(snapshot['original']).model_dump()
-        state = deepcopy(snapshot['state'])
-        current = FinalModel.model_validate({**original, 'architecture':state['architecture'], 'analysis':state['analysis']})
+        state = upgrade_state(snapshot['state'], original)
+        current = FinalModel.model_validate({**current_document(original, state), 'architecture':state['architecture'], 'analysis':state['analysis']})
         state['architecture'] = current.architecture.model_dump()
         state['analysis'] = current.analysis.model_dump()
         for key in ('positions','decisions','provenance'):
@@ -167,6 +173,10 @@ class ReviewStore:
             for event in reversed(snapshot.get('history', [])):
                 db.execute('INSERT INTO events(project_id,action,actor,reason,at,revision) VALUES(?,?,?,?,?,?)', (pid,event.get('action','import'),event.get('actor','Mühendis'),event.get('reason',''),event.get('at',timestamp),0))
             db.execute('INSERT INTO events(project_id,action,actor,reason,at,revision) VALUES(?,?,?,?,?,?)', (pid,'import','Mühendis','Çalışma paketi açıldı; önceki işlemler geçmişte korunur.',timestamp,0))
+        for turn in snapshot.get('conversation', []):
+            turn = {**deepcopy(turn), 'id':uuid.uuid4().hex, 'imported':True}
+            if turn.get('result'): turn['result'].pop('preview', None)
+            self.save_conversation(pid, turn)
         return self.get(pid)
 
     def get(self, pid):
@@ -178,7 +188,8 @@ class ReviewStore:
             state = json.loads(revision['state'])
             events = [dict(r) for r in db.execute('SELECT action,actor,reason,at,revision FROM events WHERE project_id=? ORDER BY id DESC', (pid,))]
         original = json.loads(row['original'])
-        final = FinalModel.model_validate({**original, 'architecture': state['architecture'], 'analysis': state['analysis']})
+        state = upgrade_state(state, original)
+        final = FinalModel.model_validate({**current_document(original, state), 'architecture': state['architecture'], 'analysis': state['analysis']})
         issues = []
         topics = build_topics(final, issues, state['decisions'])
         proposals = {}
@@ -189,14 +200,14 @@ class ReviewStore:
                 previous = state.get('proposal_contexts', {}).get(f['id'], proposal_context(original['architecture'], f))
                 present = proposal_context(state['architecture'], f)
                 changed = [dict(id=oid, before=previous.get(oid), after=present.get(oid)) for oid in sorted(set(previous) | set(present)) if previous.get(oid) != present.get(oid)]
-                proposals[f['id']] = dict(fingerprint=current, stale=current != base, changed_objects=changed)
+                proposals[f['id']] = dict(fingerprint=current, stale=current != base or bool(state['stale_links'].get('finding:'+f['id'])), changed_objects=changed)
         return dict(id=pid, name=row['name'], origin_path=row['origin_path'], origin_hash=row['origin_hash'], version=row['version'], current_revision=row['current'], created=row['created'], updated=row['updated'], original=original, state=state, issues=issues, topics=topics, proposals=proposals, source_labels=source_labels(final.source_catalog), history=events, can_undo=revision['parent'] is not None, can_redo=bool(json.loads(row['redo'])), changes=changes_between(original, state))
 
     def mutate(self, pid, command):
         actor = command.get('actor', '').strip()
         reason = command.get('reason', '').strip()
         action = command.get('action')
-        defaults = {'upsert_component':'Bileşen düzenlendi', 'upsert_connection':'Bağlantı düzenlendi', 'layout':'Şema yerleşimi değişti', 'undo':'Son işlem geri alındı', 'redo':'İşlem yinelendi', 'set_assumption':'Varsayım düzenlendi', 'delete_component':'Bileşen kaldırıldı', 'delete_connection':'Bağlantı kaldırıldı', 'add_finding':'Mühendis notu eklendi', 'edit_finding':'İnceleme notu düzenlendi', 'append_review':'Yeni yapay zekâ değerlendirmesi eklendi'}
+        defaults = {'upsert_component':'Bileşen düzenlendi', 'upsert_connection':'Bağlantı düzenlendi', 'layout':'Şema yerleşimi değişti', 'undo':'Son işlem geri alındı', 'redo':'İşlem yinelendi', 'set_assumption':'Varsayım düzenlendi', 'delete_component':'Bileşen kaldırıldı', 'delete_connection':'Bağlantı kaldırıldı', 'add_finding':'Mühendis notu eklendi', 'edit_finding':'İnceleme notu düzenlendi', 'append_review':'Yeni yapay zekâ değerlendirmesi eklendi', 'apply_change_set':'Önizlenen değişiklik paketi uygulandı', 'upsert_source':'TİD maddesi düzenlendi', 'delete_source':'TİD maddesi kaldırıldı', 'upsert_assumption':'Varsayım ve mühendis kararı düzenlendi'}
         reason = reason or defaults.get(action, '')
         command = {**command, 'reason':reason}
         if not actor or not reason:
@@ -222,7 +233,14 @@ class ReviewStore:
             else:
                 state = json.loads(rev['state'])
                 original = json.loads(row['original'])
-                state = self.apply(state, original, command)
+                if action == 'apply_change_set':
+                    preview = db.execute('SELECT * FROM change_previews WHERE id=? AND project_id=?', (command.get('value', {}).get('preview_id'), pid)).fetchone()
+                    if not preview or preview['version'] != row['version']:
+                        raise ConflictError('Önizleme güncel değil. Değişiklikleri yeniden önizleyin.')
+                    state = self.apply_commands(state, original, json.loads(preview['commands']), preview['actor'], preview['reason'])
+                    actor, reason = preview['actor'], preview['reason']
+                else:
+                    state = self.apply(state, original, command)
                 current = db.execute('SELECT MAX(seq)+1 FROM revisions WHERE project_id=?', (pid,)).fetchone()[0]
                 db.execute('INSERT INTO revisions VALUES(?,?,?,?)', (pid, current, row['current'], dump(state)))
                 redo = []
@@ -232,18 +250,19 @@ class ReviewStore:
         return self.get(pid)
 
     def apply(self, state, original, command):
-        state = deepcopy(state)
+        state = upgrade_state(state, original)
+        incoming_workspace = workspace_fingerprint(state)
         action = command['action']
         value = command.get('value', {})
         key = command.get('id', '')
         arch = state['architecture']
-        before_final = FinalModel.model_validate({**original,'architecture':arch,'analysis':state['analysis']})
+        before_final = FinalModel.model_validate({**current_document(original, state),'architecture':arch,'analysis':state['analysis']})
         before_topics = build_topics(before_final,[],state['decisions'])
         for topic in before_topics:
             d = state['decisions'].get('topic:'+topic['id']) or state['decisions'].get('finding:'+topic['finding_id'])
             if d and d.get('fingerprint_version') != 2:
                 state['decisions']['topic:'+topic['id']] = {**d, 'fingerprint':topic['fingerprint'], 'fingerprint_version':2}
-        sources = {s['requirement_id']: s for s in original['source_catalog']}
+        sources = {s['requirement_id']: s for s in state['source_catalog']}
         components = {x['id'] for x in arch['components']}
         connections = {x['id'] for x in arch['connections']}
         affected = set()
@@ -265,9 +284,54 @@ class ReviewStore:
             affected.add(f"{kind}:{obj['id']}")
             for ev in (old or {}).get('evidence', []) + obj.get('evidence', []):
                 affected.add('source:' + ev['requirement_id'])
+            state['stale_links'].pop(f"{kind}:{obj['id']}", None)
             state['provenance'][f"{kind}:{obj['id']}"] = dict(origin='engineer_edit' if any(o['id'] == obj['id'] for o in original['architecture'][field]) else 'engineer_added', actor=command['actor'], reason=command['reason'], at=now())
 
-        if action in ('upsert_component', 'upsert_connection'):
+        if action in ('upsert_source', 'delete_source'):
+            old = sources.get(key)
+            if action == 'delete_source':
+                if old is None:
+                    raise ValueError('Kaldırılacak TİD maddesi bulunamadı.')
+                state['source_catalog'] = [s for s in state['source_catalog'] if s['requirement_id'] != key]
+                state['retired_sources'].append({**old, 'retired_at':now(), 'actor':command['actor']})
+            else:
+                item = SourceEdit.model_validate(value).model_dump()
+                if not item['text'].strip():
+                    raise ValueError('TİD metni boş olamaz.')
+                if key and (not old or item['requirement_id'] != key):
+                    raise ValueError('Kalıcı ister kimliği değiştirilemez.')
+                if not key and (item['requirement_id'] in sources or any(s['requirement_id']==item['requirement_id'] for s in state['retired_sources'])):
+                    raise ValueError('İster kimliği daha önce kullanılmış.')
+                key = item['requirement_id']
+                item['locations'] = old.get('locations', []) if old else ['engineer:'+key]
+                state['source_catalog'] = [item if s['requirement_id']==key else s for s in state['source_catalog']] if old else state['source_catalog']+[item]
+            state['document_revision'] += 1
+            affected.add('source:'+key)
+            for kind, objects in [('component', arch['components']), ('connection', arch['connections']), ('finding', state['analysis']['findings'])]:
+                for obj in objects:
+                    if any(e['requirement_id']==key for e in obj.get('evidence', [])):
+                        oid = kind+':'+obj['id']
+                        state['stale_links'][oid] = sorted(set(state['stale_links'].get(oid, [])+[key]))
+                        affected.add(oid)
+            state['provenance']['source:'+key] = dict(origin='engineer_edit' if old else 'engineer_added', actor=command['actor'], reason=command['reason'], at=now())
+        elif action == 'upsert_assumption':
+            record = AssumptionRecord.model_validate(value).model_dump()
+            existing = next((r for r in state['assumption_records'] if r['id']==key), None)
+            if key and (not existing or record['id'] != key):
+                raise ValueError('Varsayım kimliği bulunamadı veya değiştirildi.')
+            if not key and any(r['id']==record['id'] for r in state['assumption_records']):
+                raise ValueError('Varsayım kimliği zaten kullanılıyor.')
+            if not record['text'].strip():
+                raise ValueError('Varsayım metni boş olamaz.')
+            for field, valid in [('source_ids', set(sources)), ('component_ids', components), ('connection_ids', connections)]:
+                if set(record[field])-valid:
+                    raise ValueError('Varsayım mevcut olmayan kayda bağlanamaz.')
+            if record['status'] != 'pending' and not record['note'].strip():
+                raise ValueError('Varsayım kararı için açıklama gerekli.')
+            record.update(actor=command['actor'], at=now(), stale=False, basis=assumption_basis(state, record))
+            state['assumption_records'] = [record if r['id']==key else r for r in state['assumption_records']] if existing else state['assumption_records']+[record]
+            arch['assumptions'] = [r['text'] for r in state['assumption_records']]
+        elif action in ('upsert_component', 'upsert_connection'):
             obj = (Component if action == 'upsert_component' else Connection).model_validate(value).model_dump()
             if key and obj['id'] != key:
                 raise ValueError('Kalıcı nesne kimliği değiştirilemez.')
@@ -327,7 +391,7 @@ class ReviewStore:
                 raise ValueError('Bu öneri zaten uygulandı. Geri alarak yeniden düzenleyebilirsiniz.')
             current = fingerprint(proposal_context(arch, finding))
             base = state.get('proposal_bases', {}).get(key, fingerprint(proposal_context(original['architecture'], finding)))
-            if current != base or value.get('fingerprint') != current:
+            if current != base or value.get('fingerprint') != current or state['stale_links'].get('finding:'+key):
                 raise ConflictError('Önerinin dayandığı öğeler değişti. Güncel tasarımı yeniden değerlendirin veya öğeyi elle düzenleyin.')
             changes = [ProposedChange.model_validate(c).model_dump() for c in value.get('changes', finding['proposed_changes'])]
             expected = [(c['action'], c['kind'], c['id']) for c in finding['proposed_changes']]
@@ -340,12 +404,14 @@ class ReviewStore:
                     raise ValueError('Önerideki öğe artık beklenen durumda değil.')
                 obj = {**(old or {}), **c['value'], 'id':c['id']}
                 state = self.apply(state, original, {**command, 'action':('delete_' if c['action']=='remove' else 'upsert_')+c['kind'], 'id':c['id'] if old else '', 'value':{'cascade':True} if c['action']=='remove' else obj})
-            final = FinalModel.model_validate({**original, 'architecture':state['architecture'], 'analysis':state['analysis']})
+            final = FinalModel.model_validate({**current_document(original, state), 'architecture':state['architecture'], 'analysis':state['analysis']})
             updated = next(t for t in build_topics(final, [], state['decisions']) if t['finding_id'] == key)
             state['decisions']['topic:'+topic['id']] = dict(status='applied', note=command['reason'], actor=command['actor'], at=now(), stale=False, fingerprint=updated['fingerprint'], fingerprint_version=2)
-            return state
+            return upgrade_state(state, original)
         elif action == 'append_review':
             analysis = AnalysisResult.model_validate(value['analysis']).model_dump()
+            if value.get('workspace_fingerprint') and value['workspace_fingerprint'] != incoming_workspace:
+                raise ConflictError('Değerlendirme sırasında TİD veya mühendis kararları değişti. Yeniden değerlendirin.')
             if value.get('architecture_fingerprint') != fingerprint(arch):
                 raise ConflictError('Değerlendirme sırasında tasarım değişti. Önerileri güncel tasarımla yeniden isteyin.')
             for f in analysis['findings']:
@@ -365,7 +431,7 @@ class ReviewStore:
                 state['analysis'][field] = list(dict.fromkeys(state['analysis'].get(field, [])+analysis[field]))
             state['last_review_at'] = now()
         elif action == 'set_topic_decision':
-            final = FinalModel.model_validate({**original, 'architecture':arch, 'analysis':state['analysis']})
+            final = FinalModel.model_validate({**current_document(original, state), 'architecture':arch, 'analysis':state['analysis']})
             topics = build_topics(final, [], state['decisions'])
             topic = next((t for t in topics if t['id']==key), None)
             if not topic:
@@ -411,6 +477,9 @@ class ReviewStore:
                     seen.add(cursor)
                     cursor = state['decisions'].get('finding:' + cursor, {}).get('merged_into')
             state['decisions'][key] = dict(status=status, note=command['reason'], actor=command['actor'], at=now(), stale=False, merged_into=target)
+            if kind == 'assumption':
+                record = state['assumption_records'][int(oid)]
+                record.update(status={'approved':'accepted','rejected':'rejected','needs_review':'pending'}[status],note=command['reason'],actor=command['actor'],at=now(),stale=False,basis=assumption_basis(state,record))
         elif action in ('add_finding', 'edit_finding'):
             obj = Finding.model_validate(value).model_dump()
             exists = any(f['id'] == obj['id'] for f in state['analysis']['findings'])
@@ -435,6 +504,7 @@ class ReviewStore:
             if not text or not 0 <= index < len(arch['assumptions']):
                 raise ValueError('Geçerli varsayım ve açıklama gerekli.')
             arch['assumptions'][index] = text
+            state['assumption_records'][index]['text'] = text
             affected.add('assumption:' + key)
         elif action == 'layout':
             if set(value) - components:
@@ -450,14 +520,59 @@ class ReviewStore:
                 state['decisions'][decision_key]['stale'] = True
                 state['decisions'][decision_key]['stale_reason'] = 'İlişkili mimari veya dayanak değişti; önceki kararı yeniden değerlendirin.'
         # Topic decisions track only their own dependencies; unrelated edits do not reopen them.
-        final = FinalModel.model_validate({**original,'architecture':arch,'analysis':state['analysis']})
+        final = FinalModel.model_validate({**current_document(original, state),'architecture':arch,'analysis':state['analysis']})
         for topic in build_topics(final,[],state['decisions']):
             decision_key='topic:'+topic['id']
             if decision_key in state['decisions']:
                 state['decisions'][decision_key]['stale']=bool(topic['decision'].get('stale')) if topic['active'] else False
                 if topic['active'] and topic['decision'].get('stale'):
                     state['decisions'][decision_key]['stale_reason']=topic['decision']['stale_reason']
+        return upgrade_state(state, original)
+
+    def apply_commands(self, state, original, commands, actor, reason):
+        allowed = {'upsert_component', 'upsert_connection', 'delete_component', 'delete_connection',
+                   'upsert_source', 'delete_source', 'upsert_assumption', 'set_assumption',
+                   'set_topic_decision', 'set_decision', 'apply_proposal', 'add_finding', 'edit_finding'}
+        if not isinstance(commands, list) or not 1 <= len(commands) <= 40:
+            raise ValueError('Bir pakette 1–40 değişiklik olmalı.')
+        for command in commands:
+            if not isinstance(command, dict) or command.get('action') not in allowed:
+                raise ValueError('Bu işlem değişiklik paketinde desteklenmiyor.')
+            if set(command) - {'action', 'id', 'value', 'reason'}:
+                raise ValueError('Değişiklikte beklenmeyen alan var.')
+            state = self.apply(state, original, {**command, 'actor':actor, 'reason':command.get('reason') or reason})
+        # An explicit decision in this package is based on the final previewed design.
+        decided = {c.get('value', {}).get('id') for c in commands if c['action']=='upsert_assumption'}
+        for record in state.get('assumption_records', []):
+            if record['id'] in decided:
+                for field, valid in [('source_ids', {s['requirement_id'] for s in state['source_catalog']}), ('component_ids', {o['id'] for o in state['architecture']['components']}), ('connection_ids', {o['id'] for o in state['architecture']['connections']})]:
+                    if set(record[field])-valid:
+                        raise ValueError('Kararın bağlı olduğu kayıt pakette kaldırılıyor. Varsayım bağlantılarını da düzenleyin.')
+                record.update(basis=assumption_basis(state, record), stale=False)
         return state
+
+    def preview(self, pid, version, commands, actor, reason):
+        project = self.get(pid)
+        if project['version'] != version:
+            raise ConflictError('Çalışma değişti. Güncel sürümü açıp yeniden önizleyin.')
+        if not actor.strip() or not reason.strip():
+            raise ValueError('Mühendis ve değişiklik açıklaması gerekli.')
+        after = self.apply_commands(project['state'], project['original'], commands, actor, reason)
+        preview_id = uuid.uuid4().hex
+        with self.db() as db:
+            db.execute('INSERT INTO change_previews VALUES(?,?,?,?,?,?,?)',
+                       (preview_id, pid, version, dump(commands), actor, reason, now()))
+            db.execute('DELETE FROM change_previews WHERE project_id=? AND id NOT IN (SELECT id FROM change_previews WHERE project_id=? ORDER BY created DESC LIMIT 30)', (pid,pid))
+        return dict(id=preview_id, version=version, reason=reason, commands=commands,
+                    **impact_summary(project['state'], after))
+
+    def save_conversation(self, pid, turn):
+        with self.db() as db:
+            db.execute('INSERT OR REPLACE INTO conversations VALUES(?,?,?)', (pid, turn['id'], dump(turn)))
+
+    def conversation(self, pid):
+        with self.db() as db:
+            return [json.loads(r['payload']) for r in db.execute('SELECT payload FROM conversations WHERE project_id=? ORDER BY rowid', (pid,))]
 
     def save_job(self, payload):
         with self.db() as db:

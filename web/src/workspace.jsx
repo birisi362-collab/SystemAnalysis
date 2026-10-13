@@ -39,6 +39,13 @@ import { pollJob } from "./workbench-api.js";
 import { readableText } from "./review-labels.js";
 import { reviewProgress } from "./review-status.js";
 import "./workspace.css";
+import {
+  ChangePreview,
+  TidPanel,
+  AssumptionsPanel,
+  AssistantPanel,
+  assumptionStates,
+} from "./engineering-panels.jsx";
 
 function Workspace({
   project,
@@ -49,6 +56,8 @@ function Workspace({
   history,
   onHistoryClose,
   onEditing,
+  onEngineering,
+  onAssistant,
 }) {
   const [selection, setSelection] = useState(null),
     [sourceId, setSourceId] = useState(null),
@@ -436,19 +445,38 @@ function Workspace({
               />
             )
           )}
-          {!draft && !noteOpen && !!architecture.assumptions.length && (
+          {!draft && !noteOpen && (
             <details className="workspace-assumptions">
-              <summary>Varsayımlar · {architecture.assumptions.length}</summary>
-              {architecture.assumptions.map((text, i) => (
-                <Assumption
-                  key={i + text}
-                  text={text}
-                  onSave={(value) =>
-                    commit("set_assumption", String(i), { text: value })
-                  }
-                />
+              <summary>
+                Varsayımlar · {project.state.assumption_records.length}
+              </summary>
+              {project.state.assumption_records.map((r) => (
+                <div key={r.id}>
+                  <p>{r.text}</p>
+                  <span className="badge">
+                    {r.stale
+                      ? "Yeniden incelenmeli"
+                      : assumptionStates[r.status]}
+                  </span>
+                </div>
               ))}
+              <Button onClick={() => onEngineering("assumptions")}>
+                Varsayımları incele
+              </Button>
             </details>
+          )}
+          {!draft && object && (
+            <Button
+              onClick={() =>
+                onAssistant({
+                  selection,
+                  message:
+                    "Seçili öğenin TİD dayanaklarını ve varsa açık konularını açıkla.",
+                })
+              }
+            >
+              Seçili öğeyi asistana sor
+            </Button>
           )}
           {!draft &&
             !noteOpen &&
@@ -476,7 +504,7 @@ function Workspace({
             {...{ project }}
             onSelect={(s) => {
               if (["component", "connection"].includes(s.kind)) select(s);
-              else if (s.kind === "source") source(s.id);
+              else if (["source", "requirement"].includes(s.kind)) source(s.id);
               else topic(project.topics.find((t) => t.finding_id === s.id)?.id);
               onHistoryClose();
             }}
@@ -486,25 +514,6 @@ function Workspace({
     </>
   );
 }
-function Assumption({ text, onSave }) {
-  const [value, setValue] = useState(text);
-  return (
-    <form
-      onSubmit={async (e) => {
-        e.preventDefault();
-        await onSave(value);
-      }}
-    >
-      <Field label="Varsayım">
-        <textarea value={value} onChange={(e) => setValue(e.target.value)} />
-      </Field>
-      <Button type="submit" disabled={!value.trim() || value === text}>
-        Kaydet
-      </Button>
-    </form>
-  );
-}
-
 export default function App() {
   const [bootstrap, setBootstrap] = useState(null),
     [project, setProject] = useState(null),
@@ -519,6 +528,19 @@ export default function App() {
     [actor, setActor] = useState(
       () => localStorage.getItem("workbench.actor") || "Mühendis",
     );
+  const [preview, setPreview] = useState(null),
+    [previewError, setPreviewError] = useState(""),
+    [assistantRequest, setAssistantRequest] = useState(null),
+    [assistantSession, setAssistantSession] = useState(0);
+  const [assistantSettings, setAssistantSettings] = useState({
+    profile: "internal_example",
+    api_key: "",
+    base_url: "",
+    model: "",
+    timeout: 600,
+    max_tokens: 8192,
+  });
+  const previewResolver = useRef(null);
   const lock = useRef(false);
   const refresh = async () => {
     const b = await api("/bootstrap");
@@ -566,7 +588,7 @@ export default function App() {
       onError: (e) => setConnectionError(e.message),
     });
   }, [job?.id, job?.status]);
-  const commit = async (action, id, value, reason = "") => {
+  const directCommit = async (action, id, value, reason = "") => {
     if (lock.current) return false;
     lock.current = true;
     setBusy(true);
@@ -589,6 +611,93 @@ export default function App() {
       lock.current = false;
       setBusy(false);
     }
+  };
+  const onCommands = async (
+    commands,
+    reason = "Mühendis düzenlemesi",
+    version = project.version,
+  ) => {
+    if (lock.current || previewResolver.current) return false;
+    lock.current = true;
+    setBusy(true);
+    setError("");
+    setPreviewError("");
+    try {
+      const result = await api(`/projects/${project.id}/preview`, {
+        version,
+        commands,
+        actor: actor.trim() || "Mühendis",
+        reason: reason || "Mühendis düzenlemesi",
+      });
+      setPreview(result);
+      return await new Promise((resolve) => {
+        previewResolver.current = resolve;
+        lock.current = false;
+        setBusy(false);
+      });
+    } catch (e) {
+      setError(e.message);
+      return false;
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
+  };
+  const commit = (action, id, value, reason = "") =>
+    ["undo", "redo", "layout"].includes(action)
+      ? directCommit(action, id, value, reason)
+      : onCommands(
+          [{ action, id, value, reason }],
+          reason || "Mühendis düzenlemesi",
+        );
+  const closePreview = (result) => {
+    setPreview(null);
+    setPreviewError("");
+    const resolve = previewResolver.current;
+    previewResolver.current = null;
+    resolve?.(result);
+  };
+  const applyChanges = async () => {
+    if (project.version !== preview.version) {
+      setPreviewError("Proje değişti. Güncel sürümde yeniden önizleyin.");
+      return;
+    }
+    if (
+      await directCommit(
+        "apply_change_set",
+        "",
+        { preview_id: preview.id },
+        preview.reason,
+      )
+    )
+      closePreview(true);
+    else
+      setPreviewError(
+        "Değişiklikler uygulanamadı. Projeyi yenileyip tekrar önizleyin.",
+      );
+  };
+  const repreview = async (commands) => {
+    setBusy(true);
+    setPreviewError("");
+    try {
+      setPreview(
+        await api(`/projects/${project.id}/preview`, {
+          version: preview.version,
+          commands,
+          actor: actor.trim() || "Mühendis",
+          reason: preview.reason,
+        }),
+      );
+    } catch (e) {
+      setPreviewError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const askAssistant = (request) => {
+    setAssistantRequest(request);
+    setAssistantSession((v) => v + 1);
+    setDrawer("assistant");
   };
   const running = job && ["queued", "running"].includes(job.status);
   return (
@@ -643,6 +752,18 @@ export default function App() {
           </Button>
           {project && (
             <>
+              <Button
+                disabled={busy || editing}
+                onClick={() => setDrawer("tid")}
+              >
+                TİD ve kararlar
+              </Button>
+              <Button
+                disabled={busy || editing}
+                onClick={() => askAssistant(null)}
+              >
+                Asistan
+              </Button>
               <button
                 className="icon-button"
                 aria-label="Son işlemi geri al"
@@ -717,6 +838,9 @@ export default function App() {
               {stopping ? "Durduruluyor…" : "Değerlendirmeyi durdur"}
             </Button>
           )}
+          {job.mode === "assistant" && (
+            <Button onClick={() => askAssistant(null)}>Yanıtı aç</Button>
+          )}
           {(job.mode === "review" || job.calls !== undefined) && (
             <Button onClick={() => setDrawer("diagnostics")}>
               Değerlendirme ayrıntıları
@@ -755,6 +879,8 @@ export default function App() {
           key={project.id}
           {...{ project, commit, busy, error }}
           onError={setError}
+          onEngineering={setDrawer}
+          onAssistant={askAssistant}
           onEditing={setEditing}
           history={drawer === "history"}
           onHistoryClose={() => setDrawer(null)}
@@ -787,6 +913,71 @@ export default function App() {
             <p>Kaynak · Mimari · Mühendis kararı</p>
           </div>
         </main>
+      )}
+      {["tid", "assumptions", "assistant"].includes(drawer) &&
+        project &&
+        bootstrap && (
+          <Drawer
+            title={
+              drawer === "assistant"
+                ? "Proje asistanı"
+                : "TİD ve mühendis kararları"
+            }
+            onClose={() => setDrawer(null)}
+          >
+            <nav className="engineering-tabs">
+              <Button onClick={() => setDrawer("tid")}>TİD</Button>
+              <Button onClick={() => setDrawer("assumptions")}>
+                Varsayımlar
+              </Button>
+              <Button onClick={() => askAssistant(null)}>Asistan</Button>
+            </nav>
+            {error && (
+              <p className="banner error" role="alert">
+                {error}
+              </p>
+            )}
+            {drawer === "tid" && (
+              <TidPanel
+                {...{ project, busy, onCommands }}
+                onAssistant={askAssistant}
+              />
+            )}
+            {drawer === "assumptions" && (
+              <AssumptionsPanel
+                {...{ project, busy, onCommands }}
+                onAssistant={askAssistant}
+              />
+            )}
+            {drawer === "assistant" && (
+              <AssistantPanel
+                key={project.id + ":" + assistantSession}
+                {...{ project, bootstrap, actor, job, busy, onCommands }}
+                settings={assistantSettings}
+                setSettings={setAssistantSettings}
+                request={assistantRequest}
+                onRequestHandled={() => setAssistantRequest(null)}
+                onJob={setJob}
+              />
+            )}
+          </Drawer>
+        )}
+      {preview && (
+        <Drawer
+          title="Değişiklik önizlemesi"
+          onClose={() => {
+            if (!busy) closePreview(false);
+          }}
+        >
+          <ChangePreview
+            key={preview.id}
+            {...{ preview, project, busy }}
+            error={previewError}
+            onApply={applyChanges}
+            onCancel={() => closePreview(false)}
+            onRepreview={repreview}
+          />
+        </Drawer>
       )}
       {["open", "review"].includes(drawer) && bootstrap && (
         <Drawer

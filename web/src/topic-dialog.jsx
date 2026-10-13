@@ -98,7 +98,7 @@ function SourceCards({
   return (
     <div className="topic-sources">
       {ids.map((id) => {
-        const source = project.original.source_catalog.find(
+        const source = (project.state.source_catalog || project.original.source_catalog).find(
           (s) => s.requirement_id === id,
         );
         if (!source)

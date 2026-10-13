@@ -16,12 +16,20 @@ function FieldValue({ value, field, project, original = false }) {
           </p>
         ))
       : "Dayanak eklenmemiş";
+  if (field === "source_ids")
+    return (
+      value.map((id) => sourceName(project, id)).join(", ") || "Seçilmemiş"
+    );
   if (field.endsWith("_ids"))
     return (
       value.map((id) => objectName(project, id, original)).join(", ") ||
       "Seçilmemiş"
     );
   const names = {
+    pending: "Bekliyor",
+    accepted: "Kabul edildi",
+    rejected: "Reddedildi",
+    waiting: "Bilgi bekliyor",
     data: "Veri",
     power: "Güç",
     control: "Kontrol",
@@ -72,7 +80,7 @@ const fields = {
   type: "Akış türü",
   protocol: "Arayüz",
   evidence: "Doküman dayanağı",
-  status: "Eşleştirme durumu",
+  status: "Durum",
   related_component_ids: "Doğrudan bileşenler",
   related_connection_ids: "Doğrudan bağlantılar",
   contextual_component_ids: "Bağlamsal bileşenler",
@@ -80,7 +88,14 @@ const fields = {
   notes: "Kapsama açıklaması",
   title: "Konu",
   recommended_action: "Öneri",
-  text: "Varsayım",
+  text: "Metin",
+  section: "Bölüm",
+  note: "Karar gerekçesi",
+  alternative: "Alternatif bilgi",
+  rationale: "Varsayım gerekçesi",
+  source_ids: "İlgili isterler",
+  component_ids: "İlgili bileşenler",
+  connection_ids: "İlgili bağlantılar",
   severity: "Önem",
 };
 
@@ -92,6 +107,11 @@ export function HistoryChanges({ project, onSelect }) {
     ["connection", before.connections, after.connections],
     ["source", before.requirement_coverage, after.requirement_coverage],
     [
+      "requirement",
+      project.original.source_catalog,
+      project.state.source_catalog || project.original.source_catalog,
+    ],
+    [
       "finding",
       project.original.analysis.findings,
       project.state.analysis.findings,
@@ -99,11 +119,15 @@ export function HistoryChanges({ project, onSelect }) {
     [
       "assumption",
       before.assumptions.map((text, id) => ({ id: String(id), text })),
-      after.assumptions.map((text, id) => ({ id: String(id), text })),
+      (
+        project.state.assumption_records ||
+        after.assumptions.map((text, id) => ({ id: String(id), text }))
+      ).map((r, id) => ({ ...r, id: String(id) })),
     ],
   ];
   const changes = groups.flatMap(([kind, oldItems, newItems]) => {
-    const key = (item) => (kind === "source" ? item.requirement_id : item.id);
+    const key = (item) =>
+      ["source", "requirement"].includes(kind) ? item.requirement_id : item.id;
     const ids = [...new Set([...oldItems, ...newItems].map(key))];
     return ids
       .map((id) => {
@@ -117,14 +141,13 @@ export function HistoryChanges({ project, onSelect }) {
             JSON.stringify(current?.[field] ?? empty)
           );
         });
-        const name =
-          kind === "source"
-            ? sourceName(project, id)
-            : kind === "finding"
-              ? readableText(current?.title || old?.title, project)
-              : kind === "assumption"
-                ? `Varsayım ${Number(id) + 1}`
-                : objectName(project, id, !current);
+        const name = ["source", "requirement"].includes(kind)
+          ? sourceName(project, id)
+          : kind === "finding"
+            ? readableText(current?.title || old?.title, project)
+            : kind === "assumption"
+              ? `Varsayım ${Number(id) + 1}`
+              : objectName(project, id, !current);
         return { id, kind, old, current, changedFields, name };
       })
       .filter((row) => row.changedFields.length || !row.old || !row.current);

@@ -39,12 +39,13 @@ export function DocumentPanel({
       }),
     );
   }, [sourceId]);
-  const sources = project.original.source_catalog;
+  const sources =
+    project.state.source_catalog || project.original.source_catalog;
   return (
     <aside className="document-panel">
       <header className="panel-heading">
         <span className="eyebrow">
-          <BookOpen size={14} /> KAYNAK BELGE
+          <BookOpen size={14} /> TİD ÇALIŞMA SÜRÜMÜ
         </span>
         <h2>{project.original.run_metadata?.input_name || project.name}</h2>
         <label className="panel-search">
@@ -296,9 +297,9 @@ export function EvidenceList({ project, evidence = [], onSource, onRemove }) {
           </div>
           <blockquote>
             {e.quote ||
-              project.original.source_catalog.find(
-                (s) => s.requirement_id === e.requirement_id,
-              )?.text ||
+              (
+                project.state.source_catalog || project.original.source_catalog
+              ).find((s) => s.requirement_id === e.requirement_id)?.text ||
               "Kaynak metin bulunamadı."}
           </blockquote>
         </div>
@@ -484,6 +485,13 @@ export function EntityPanel({
               <MessageSquare size={17} />
             </button>
           </div>
+          {!!project.state.stale_links?.[kind + ":" + value.id]?.length && (
+            <p className="source-stale">
+              TİD dayanağı değişti:{" "}
+              {project.state.stale_links[kind + ":" + value.id].join(", ")}.
+              Eski alıntıları güncel TİD ile karşılaştırıp düzenleyin.
+            </p>
+          )}
           <h4>Bu öğe nereden çıkarıldı?</h4>
           <EvidenceList
             {...{ project, onSource }}
