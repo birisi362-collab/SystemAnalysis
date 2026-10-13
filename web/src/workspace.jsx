@@ -39,12 +39,12 @@ import { pollJob } from "./workbench-api.js";
 import { readableText } from "./review-labels.js";
 import { reviewProgress } from "./review-status.js";
 import "./workspace.css";
+import { useModelSettings, ModelSettings } from "./model-settings.jsx";
 import {
   ChangePreview,
   TidPanel,
   AssumptionsPanel,
   AssistantPanel,
-  assumptionStates,
 } from "./engineering-panels.jsx";
 
 function Workspace({
@@ -56,8 +56,7 @@ function Workspace({
   history,
   onHistoryClose,
   onEditing,
-  onEngineering,
-  onAssistant,
+  onContextChange,
 }) {
   const [selection, setSelection] = useState(null),
     [sourceId, setSourceId] = useState(null),
@@ -132,6 +131,7 @@ function Workspace({
   const select = (s) =>
     safe(() => {
       setSelection(s);
+      onContextChange(s);
       setRight(true);
       setFocusMode("object");
       const o = architecture[
@@ -143,6 +143,7 @@ function Workspace({
       }
     });
   const source = (id) => {
+    onContextChange({ source_id: id, document: "current" });
     setSourceId(id);
     setLeft(true);
     if (!draft) setFocusMode("source");
@@ -445,40 +446,6 @@ function Workspace({
               />
             )
           )}
-          {!draft && !noteOpen && (
-            <details className="workspace-assumptions">
-              <summary>
-                Varsayımlar · {project.state.assumption_records.length}
-              </summary>
-              {project.state.assumption_records.map((r) => (
-                <div key={r.id}>
-                  <p>{r.text}</p>
-                  <span className="badge">{assumptionStates[r.status]}</span>
-                  {r.stale && (
-                    <p className="notice amber">
-                      <b>Yeniden incelenmeli:</b> {r.stale_reason}
-                    </p>
-                  )}
-                </div>
-              ))}
-              <Button onClick={() => onEngineering("assumptions")}>
-                Varsayımları incele
-              </Button>
-            </details>
-          )}
-          {!draft && object && (
-            <Button
-              onClick={() =>
-                onAssistant({
-                  selection,
-                  message:
-                    "Seçili öğenin TİD dayanaklarını ve varsa açık konularını açıkla.",
-                })
-              }
-            >
-              Seçili öğeyi asistana sor
-            </Button>
-          )}
           {!draft &&
             !noteOpen &&
             !!(
@@ -532,15 +499,11 @@ export default function App() {
   const [preview, setPreview] = useState(null),
     [previewError, setPreviewError] = useState(""),
     [assistantRequest, setAssistantRequest] = useState(null),
-    [assistantSession, setAssistantSession] = useState(0);
-  const [assistantSettings, setAssistantSettings] = useState({
-    profile: "internal_example",
-    api_key: "",
-    base_url: "",
-    model: "",
-    timeout: 600,
-    max_tokens: 8192,
-  });
+    [mainTab, setMainTab] = useState("schema"),
+    [assistantOpen, setAssistantOpen] = useState(false),
+    [selectionContext, setSelectionContext] = useState(null),
+    [settingsOpen, setSettingsOpen] = useState(false);
+  const modelSettings = useModelSettings(bootstrap?.profiles);
   const previewResolver = useRef(null);
   const lock = useRef(false);
   const refresh = async () => {
@@ -572,13 +535,21 @@ export default function App() {
       })
       .catch((e) => setError(e.message));
   }, []);
+  useEffect(() => {
+    setSelectionContext(null);
+    setAssistantRequest(null);
+  }, [project?.id]);
   useEffect(() => localStorage.setItem("workbench.actor", actor), [actor]);
   useEffect(() => {
     if (!job || !["queued", "running"].includes(job.status)) return;
     return pollJob({
       read: () => api("/jobs/" + job.id),
       onResult: async (j) => {
-        if (["completed", "partial"].includes(j.status) && j.project_id) {
+        if (
+          ["completed", "partial"].includes(j.status) &&
+          j.project_id &&
+          j.mode !== "assistant"
+        ) {
           load(await api("/projects/" + j.project_id));
           await refresh();
         }
@@ -677,7 +648,7 @@ export default function App() {
         "Değişiklikler uygulanamadı. Projeyi yenileyip tekrar önizleyin.",
       );
   };
-  const repreview = async (commands) => {
+  const repreview = async (commands, assumption_reviews = {}) => {
     setBusy(true);
     setPreviewError("");
     try {
@@ -685,6 +656,7 @@ export default function App() {
         await api(`/projects/${project.id}/preview`, {
           version: preview.version,
           commands,
+          assumption_reviews,
           actor: actor.trim() || "Mühendis",
           reason: preview.reason,
         }),
@@ -697,8 +669,8 @@ export default function App() {
   };
   const askAssistant = (request) => {
     setAssistantRequest(request);
-    setAssistantSession((v) => v + 1);
-    setDrawer("assistant");
+    if (request?.selection) setSelectionContext(request.selection);
+    setAssistantOpen(true);
   };
   const running = job && ["queued", "running"].includes(job.status);
   return (
@@ -751,20 +723,11 @@ export default function App() {
           >
             Belge aç
           </Button>
+          <Button disabled={!bootstrap} onClick={() => setSettingsOpen(true)}>
+            Model Ayarları
+          </Button>
           {project && (
             <>
-              <Button
-                disabled={busy || editing}
-                onClick={() => setDrawer("tid")}
-              >
-                TİD ve kararlar
-              </Button>
-              <Button
-                disabled={busy || editing}
-                onClick={() => askAssistant(null)}
-              >
-                Asistan
-              </Button>
               <button
                 className="icon-button"
                 aria-label="Son işlemi geri al"
@@ -784,7 +747,10 @@ export default function App() {
               <button
                 className="icon-button"
                 aria-label="Geçmişi aç"
-                onClick={() => setDrawer("history")}
+                onClick={() => {
+                  setMainTab("schema");
+                  setDrawer("history");
+                }}
               >
                 <History size={18} />
               </button>
@@ -810,7 +776,7 @@ export default function App() {
           )}
         </div>
       </header>
-      {job && (
+      {job && job.mode !== "assistant" && (
         <div
           className={"studio-job " + (job.status === "failed" ? "failed" : "")}
           role="status"
@@ -876,16 +842,113 @@ export default function App() {
         </div>
       )}
       {project ? (
-        <Workspace
-          key={project.id}
-          {...{ project, commit, busy, error }}
-          onError={setError}
-          onEngineering={setDrawer}
-          onAssistant={askAssistant}
-          onEditing={setEditing}
-          history={drawer === "history"}
-          onHistoryClose={() => setDrawer(null)}
-        />
+        <>
+          <nav
+            className="main-tabs"
+            aria-label="Çalışma alanları"
+            role="tablist"
+          >
+            {[
+              ["schema", "Şema"],
+              ["tid", "TİD"],
+              ["assumptions", "Varsayımlar"],
+            ].map(([id, label]) => (
+              <button
+                key={id}
+                id={"tab-" + id}
+                role="tab"
+                aria-selected={mainTab === id}
+                aria-controls={"panel-" + id}
+                onClick={() => setMainTab(id)}
+              >
+                {label}
+                {id === "assumptions" && (
+                  <span>
+                    {
+                      project.state.assumption_records.filter(
+                        (r) =>
+                          r.status === "pending" ||
+                          r.status === "waiting" ||
+                          r.stale,
+                      ).length
+                    }
+                  </span>
+                )}
+              </button>
+            ))}
+          </nav>
+          {error && mainTab !== "schema" && (
+            <p className="banner error" role="alert">
+              {readableText(error, project)}
+            </p>
+          )}
+          <div
+            className="main-tab-panel schema-panel"
+            id="panel-schema"
+            role="tabpanel"
+            aria-labelledby="tab-schema"
+            hidden={mainTab !== "schema"}
+          >
+            <Workspace
+              key={project.id}
+              {...{ project, commit, busy, error }}
+              onError={setError}
+              onContextChange={setSelectionContext}
+              onEditing={setEditing}
+              history={drawer === "history"}
+              onHistoryClose={() => setDrawer(null)}
+            />
+          </div>
+          <div
+            className="main-tab-panel"
+            id="panel-tid"
+            role="tabpanel"
+            aria-labelledby="tab-tid"
+            hidden={mainTab !== "tid"}
+          >
+            <TidPanel
+              key={project.id}
+              {...{ project, busy, onCommands }}
+              onAssistant={askAssistant}
+              onContextChange={setSelectionContext}
+            />
+          </div>
+          <div
+            className="main-tab-panel"
+            id="panel-assumptions"
+            role="tabpanel"
+            aria-labelledby="tab-assumptions"
+            hidden={mainTab !== "assumptions"}
+          >
+            <AssumptionsPanel
+              key={project.id}
+              {...{ project, busy, onCommands }}
+              onAssistant={askAssistant}
+            />
+          </div>
+          {bootstrap && (
+            <AssistantPanel
+              key={project.id}
+              {...{
+                project,
+                bootstrap,
+                actor,
+                job,
+                busy,
+                onCommands,
+                modelSettings,
+                connectionError,
+              }}
+              onJob={setJob}
+              open={assistantOpen}
+              onOpenChange={setAssistantOpen}
+              request={assistantRequest}
+              onRequestHandled={() => setAssistantRequest(null)}
+              context={selectionContext}
+              onClearContext={() => setSelectionContext(null)}
+            />
+          )}
+        </>
       ) : (
         <main className="welcome">
           <div className="welcome-copy">
@@ -915,57 +978,10 @@ export default function App() {
           </div>
         </main>
       )}
-      {["tid", "assumptions", "assistant"].includes(drawer) &&
-        project &&
-        bootstrap && (
-          <Drawer
-            title={
-              drawer === "assistant"
-                ? "Proje asistanı"
-                : "TİD ve mühendis kararları"
-            }
-            onClose={() => setDrawer(null)}
-          >
-            <nav className="engineering-tabs">
-              <Button onClick={() => setDrawer("tid")}>TİD</Button>
-              <Button onClick={() => setDrawer("assumptions")}>
-                Varsayımlar
-              </Button>
-              <Button onClick={() => askAssistant(null)}>Asistan</Button>
-            </nav>
-            {error && (
-              <p className="banner error" role="alert">
-                {error}
-              </p>
-            )}
-            {drawer === "tid" && (
-              <TidPanel
-                {...{ project, busy, onCommands }}
-                onAssistant={askAssistant}
-              />
-            )}
-            {drawer === "assumptions" && (
-              <AssumptionsPanel
-                {...{ project, busy, onCommands }}
-                onAssistant={askAssistant}
-              />
-            )}
-            {drawer === "assistant" && (
-              <AssistantPanel
-                key={project.id + ":" + assistantSession}
-                {...{ project, bootstrap, actor, job, busy, onCommands }}
-                settings={assistantSettings}
-                setSettings={setAssistantSettings}
-                request={assistantRequest}
-                onRequestHandled={() => setAssistantRequest(null)}
-                onJob={setJob}
-              />
-            )}
-          </Drawer>
-        )}
       {preview && (
         <Drawer
           title="Değişiklik önizlemesi"
+          className="centered-dialog preview-dialog"
           onClose={() => {
             if (!busy) closePreview(false);
           }}
@@ -990,7 +1006,8 @@ export default function App() {
           onClose={() => setDrawer(null)}
         >
           <StartPanel
-            {...{ bootstrap, project }}
+            {...{ bootstrap, project, modelSettings }}
+            onModelSettings={() => setSettingsOpen(true)}
             reevaluate={drawer === "review"}
             retryJob={drawer === "review" && retryOnly ? job : null}
             onClose={() => setDrawer(null)}
@@ -999,6 +1016,19 @@ export default function App() {
               refresh();
             }}
             onJob={setJob}
+          />
+        </Drawer>
+      )}
+      {settingsOpen && bootstrap && (
+        <Drawer
+          title="Model Ayarları"
+          className="centered-dialog settings-dialog"
+          onClose={() => setSettingsOpen(false)}
+        >
+          <ModelSettings
+            profiles={bootstrap.profiles}
+            modelSettings={modelSettings}
+            onClose={() => setSettingsOpen(false)}
           />
         </Drawer>
       )}

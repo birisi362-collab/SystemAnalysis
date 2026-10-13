@@ -7,6 +7,7 @@ from datetime import datetime
 import io
 import json
 from pathlib import Path
+from typing import Literal
 import secrets
 import tempfile
 import threading
@@ -81,6 +82,7 @@ class PreviewBody(BaseModel):
     model_config = ConfigDict(extra='forbid')
     version: int = Field(ge=0)
     commands: list[dict] = Field(min_length=1, max_length=40)
+    assumption_reviews: dict[str, Literal['review', 'keep']] = Field(default_factory=dict)
     actor: str = Field(min_length=1, max_length=120)
     reason: str = Field(default='Mühendis tarafından önizlenen değişiklik', min_length=1, max_length=5000)
 
@@ -103,8 +105,8 @@ def review_failure(exc):
         'AUTHENTICATION':'API anahtarı kabul edilmedi. Seçtiğiniz sağlayıcının geçerli anahtarını girin.',
         'ACCESS_DENIED':'Hesabınızın seçilen modele erişimi yok. Model erişimini kontrol edin veya başka profil seçin.',
         'ENDPOINT_OR_MODEL':'Model veya servis adresi bulunamadı. Profildeki model adını ve adresi kontrol edin.',
-        'TRUNCATED':'Model yanıtı çıktı sınırına ulaştığı için yarıda kesildi. Gelişmiş seçeneklerde çıktı token sınırını artırın.',
-        'TIMEOUT':'Model incelemesi süre sınırını aştı. Gelişmiş seçeneklerde süreyi artırıp yeniden deneyin.',
+        'TRUNCATED':'Model yanıtı çıktı sınırına ulaştığı için yarıda kesildi. Model Ayarları alanında çıktı token sınırını artırın.',
+        'TIMEOUT':'Model incelemesi süre sınırını aştı. Model Ayarları alanında süreyi artırıp yeniden deneyin.',
         'TIME_BUDGET':'Toplam değerlendirme süresi doldu. Tamamlanan sonuçlar saklandı; eksik bölümleri yeniden deneyebilirsiniz.',
         'CANCELLED':'Değerlendirme durduruldu. Tamamlanan sonuçlar ve kalan bölümler saklandı.',
         'TLS_RUNTIME':'Python güvenli bağlantı ortamı durdu. Uygulama korunuyor; run_app.bat ile doğrulanmış ortamda yeniden açın.',
@@ -206,7 +208,7 @@ def create_app(data_dir=None, dist_dir=None):
         result = []
         for path in sorted((ROOT/'profiles').glob('*.json')):
             cfg = load_settings(path)
-            result.append(dict(id=path.stem, model=cfg.get('model', ''), base_url=cfg.get('base_url', ''), has_key=bool(cfg.get('api_key')), timeout=cfg.get('timeout', 180)))
+            result.append(dict(id=path.stem, model=cfg.get('model', ''), base_url=cfg.get('base_url', ''), has_key=bool(cfg.get('api_key')), timeout=cfg.get('timeout', 600), max_tokens=cfg.get('max_tokens', 8192)))
         return result
 
     @api.get('/api/bootstrap')
@@ -241,14 +243,15 @@ def create_app(data_dir=None, dist_dir=None):
 
     @api.post('/api/projects/{pid}/preview')
     def preview(pid: str, body: PreviewBody):
-        return store.preview(pid, body.version, body.commands, body.actor, body.reason)
+        return store.preview(pid, body.version, body.commands, body.actor, body.reason, body.assumption_reviews)
 
     @api.get('/api/projects/{pid}/tid')
-    def download_tid(pid: str, format: str = 'docx'):
+    def download_tid(pid: str, format: str = 'docx', original: bool = False):
         project = store.get(pid)
-        data = export_tid(project, format)
+        data = export_tid(project, format, original=original)
         media = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' if format=='docx' else 'text/plain; charset=utf-8'
-        return Response(data, media_type=media, headers={'Content-Disposition':f'attachment; filename="TID_calisma_v{project["state"]["document_revision"]}.{format}"'})
+        filename = 'TID_orijinal' if original else f'TID_calisma_v{project["state"]["document_revision"]}'
+        return Response(data, media_type=media, headers={'Content-Disposition':f'attachment; filename="{filename}.{format}"'})
 
     @api.get('/api/projects/{pid}/conversation')
     def conversation(pid: str):
@@ -521,7 +524,7 @@ def create_app(data_dir=None, dist_dir=None):
             except Exception as exc:
                 code, message = review_failure(exc)
                 if code == 'TRUNCATED':
-                    message = f"İnceleme yanıtı {cfg['max_tokens']:,} token sınırında yarıda kesildi. Gelişmiş seçeneklerde çıktı token sınırını artırıp yeniden deneyin. Mevcut tasarım ve mühendis kararları korundu."
+                    message = f"İnceleme yanıtı {cfg['max_tokens']:,} token sınırında yarıda kesildi. Model Ayarları alanında çıktı token sınırını artırıp yeniden deneyin. Mevcut tasarım ve mühendis kararları korundu."
                 job.update(status='failed', error_code=code, message=message)
                 job['failure_detail'] = dict(code=code, message=str(exc) if isinstance(exc, (ConflictError, ReviewIntakeError, LLMError)) else 'Sonuç uygulamada işlenirken hata oluştu.', frames=[dict(file=Path(f.filename).name, line=f.lineno, function=f.name) for f in traceback.extract_tb(exc.__traceback__)])
             finally:

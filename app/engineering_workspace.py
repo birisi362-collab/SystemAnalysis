@@ -40,6 +40,7 @@ class AssumptionRecord(BaseModel):
     basis_snapshot: dict | None = None
     stale: bool = False
     stale_reason: str = ''
+    impact_review: dict = Field(default_factory=dict)
 
 
 def upgrade_state(state, original, baseline_resolver=None):
@@ -82,9 +83,11 @@ def upgrade_state(state, original, baseline_resolver=None):
                 if normalized(original_text) == normalized(record['text']) and not record['rationale']:
                     record['basis_snapshot'] = present
         if record['basis_snapshot'] is not None:
+            requested = record['impact_review'].get('action') == 'review'
             record.update(basis_version=2, basis=fingerprint(record['basis_snapshot']),
-                          stale=record['status'] != 'pending' and record['basis_snapshot'] != present)
-            record['stale_reason'] = dependency_reason(record['basis_snapshot'], present, state) if record['stale'] else ''
+                          stale=record['status'] != 'pending' and (record['basis_snapshot'] != present or requested))
+            record['stale_reason'] = ('Mühendis bu değişiklik sonrasında yeniden inceleme istedi.' if requested
+                                      else dependency_reason(record['basis_snapshot'], present, state)) if record['stale'] else ''
         elif record['status'] != 'pending':
             record.update(stale=True, stale_reason='Eski kararın teknik dayanağı bulunamadı; ilgili öğeleri seçip kararı yeniden doğrulayın.')
         state['assumption_records'][i] = record
@@ -125,7 +128,7 @@ def assumption_snapshot(state, record):
 
 def accept_assumption_basis(state, record):
     record['basis_snapshot'] = assumption_snapshot(state, record)
-    record.update(basis=fingerprint(record['basis_snapshot']), basis_version=2, stale=False, stale_reason='')
+    record.update(basis=fingerprint(record['basis_snapshot']), basis_version=2, stale=False, stale_reason='', impact_review={})
 
 
 def assumption_basis(state, record):

@@ -120,6 +120,8 @@ class ReviewStore:
             CREATE TABLE IF NOT EXISTS change_previews(id TEXT PRIMARY KEY, project_id TEXT NOT NULL, version INTEGER NOT NULL, commands TEXT NOT NULL, actor TEXT NOT NULL, reason TEXT NOT NULL, created TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS conversations(project_id TEXT NOT NULL, id TEXT PRIMARY KEY, payload TEXT NOT NULL);
             ''')
+            if 'assumption_reviews' not in {r['name'] for r in db.execute('PRAGMA table_info(change_previews)')}:
+                db.execute("ALTER TABLE change_previews ADD COLUMN assumption_reviews TEXT NOT NULL DEFAULT '{}'")
 
     @contextmanager
     def db(self):
@@ -291,7 +293,7 @@ class ReviewStore:
                     preview = db.execute('SELECT * FROM change_previews WHERE id=? AND project_id=?', (command.get('value', {}).get('preview_id'), pid)).fetchone()
                     if not preview or preview['version'] != row['version']:
                         raise ConflictError('Önizleme güncel değil. Değişiklikleri yeniden önizleyin.')
-                    state = self.apply_commands(state, original, json.loads(preview['commands']), preview['actor'], preview['reason'])
+                    state = self.apply_commands(state, original, json.loads(preview['commands']), preview['actor'], preview['reason'], json.loads(preview['assumption_reviews']))
                     actor, reason = preview['actor'], preview['reason']
                 else:
                     state = self.apply(state, original, command)
@@ -586,7 +588,7 @@ class ReviewStore:
                     state['decisions'][decision_key]['stale_reason']=topic['decision']['stale_reason']
         return upgrade_state(state, original)
 
-    def apply_commands(self, state, original, commands, actor, reason):
+    def apply_commands(self, state, original, commands, actor, reason, assumption_reviews=None):
         allowed = {'upsert_component', 'upsert_connection', 'delete_component', 'delete_connection',
                    'upsert_source', 'delete_source', 'upsert_assumption', 'set_assumption',
                    'set_topic_decision', 'set_decision', 'apply_proposal', 'add_finding', 'edit_finding'}
@@ -606,21 +608,40 @@ class ReviewStore:
                     if set(record[field])-valid:
                         raise ValueError('Kararın bağlı olduğu kayıt pakette kaldırılıyor. Varsayım bağlantılarını da düzenleyin.')
                 accept_assumption_basis(state, record)
-        return state
+        choices = assumption_reviews or {}
+        records = {r['id']: r for r in state.get('assumption_records', [])}
+        if not isinstance(choices, dict) or any(key not in records or choice not in ('review', 'keep') for key, choice in choices.items()):
+            raise ValueError('Yeniden inceleme seçiminde geçersiz varsayım veya seçenek var.')
+        for key, choice in choices.items():
+            record = records[key]
+            if record['status'] == 'pending':
+                raise ValueError('Henüz karar verilmemiş varsayım zaten inceleme bekliyor.')
+            if choice == 'keep':
+                accept_assumption_basis(state, record)
+            record['impact_review'] = dict(action=choice, actor=actor, at=now(), reason=reason)
+        return upgrade_state(state, original)
 
-    def preview(self, pid, version, commands, actor, reason):
+    def preview(self, pid, version, commands, actor, reason, assumption_reviews=None):
         project = self.get(pid)
         if project['version'] != version:
             raise ConflictError('Çalışma değişti. Güncel sürümü açıp yeniden önizleyin.')
         if not actor.strip() or not reason.strip():
             raise ValueError('Mühendis ve değişiklik açıklaması gerekli.')
-        after = self.apply_commands(project['state'], project['original'], commands, actor, reason)
+        automatic = self.apply_commands(project['state'], project['original'], commands, actor, reason)
+        after = self.apply_commands(project['state'], project['original'], commands, actor, reason, assumption_reviews) if assumption_reviews else automatic
+        previous = {r['id']: r for r in project['state']['assumption_records']}
+        design_changed = any(c['kind'] in ('component', 'connection', 'requirement') for c in impact_summary(project['state'], automatic)['changes'])
+        candidates = [dict(id=r['id'], text=r['text'], status=r['status'],
+                           suggested='review' if r['stale'] else 'keep', reason=r['stale_reason'],
+                           affected=r['stale'] or r != previous.get(r['id']))
+                      for r in automatic['assumption_records'] if r['status'] != 'pending' and design_changed]
         preview_id = uuid.uuid4().hex
         with self.db() as db:
-            db.execute('INSERT INTO change_previews VALUES(?,?,?,?,?,?,?)',
-                       (preview_id, pid, version, dump(commands), actor, reason, now()))
+            db.execute('INSERT INTO change_previews(id,project_id,version,commands,actor,reason,created,assumption_reviews) VALUES(?,?,?,?,?,?,?,?)',
+                       (preview_id, pid, version, dump(commands), actor, reason, now(), dump(assumption_reviews or {})))
             db.execute('DELETE FROM change_previews WHERE project_id=? AND id NOT IN (SELECT id FROM change_previews WHERE project_id=? ORDER BY created DESC LIMIT 30)', (pid,pid))
         return dict(id=preview_id, version=version, reason=reason, commands=commands,
+                    assumption_reviews=assumption_reviews or {}, assumption_review_candidates=candidates,
                     **impact_summary(project['state'], after))
 
     def save_conversation(self, pid, turn):

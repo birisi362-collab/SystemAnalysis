@@ -69,6 +69,114 @@ class EngineeringTests(unittest.TestCase):
             prompt=client.return_value.extract_json.call_args.args[1]
         return job, self.store.conversation(self.p['id'])[-1], prompt
 
+    def decide_linked(self, linked=True):
+        record = deepcopy(self.p['state']['assumption_records'][0])
+        record.update(status='accepted', note='Mühendis tarafından doğrulandı', connection_ids=['E1'] if linked else [])
+        self.apply(self.preview([dict(action='upsert_assumption', id=record['id'], value=record)]))
+        return self.p['state']['assumption_records'][0]
+
+    def review_preview(self, commands, choices):
+        response = self.client.post(self.url+'/preview', headers=self.headers, json=dict(
+            version=self.p['version'],commands=commands,actor='Denetleyen',reason='Teknik değişiklik',assumption_reviews=choices))
+        self.assertEqual(response.status_code,200,response.text)
+        return response.json()
+
+    def test_old_preview_database_migrates_without_losing_saved_preview(self):
+        preview = self.preview([self.source()])
+        with self.store.db() as db:
+            db.execute('ALTER TABLE change_previews DROP COLUMN assumption_reviews')
+        migrated = ReviewStore(self.store.path)
+        self.assertEqual(migrated.get(self.p['id'])['version'], self.p['version'])
+        updated = migrated.mutate(self.p['id'], dict(version=self.p['version'],action='apply_change_set',actor='Mühendis',reason='Eski önizleme',value={'preview_id':preview['id']}))
+        self.assertIn('Ethernet',updated['state']['source_catalog'][0]['text'])
+
+    def test_manual_keep_preserves_decision_but_future_technical_change_reopens(self):
+        old = self.decide_linked()
+        commands = [self.source()]
+        auto = self.preview(commands)
+        self.assertEqual(auto['assumption_review_candidates'][0]['suggested'], 'review')
+        selected = self.review_preview(commands, {old['id']:'keep'})
+        self.assertFalse(selected['stale_assumptions'])
+        self.assertEqual(self.store.get(self.p['id'])['state']['assumption_records'][0], old)
+        self.apply(selected)
+        record = self.store.get(self.p['id'])['state']['assumption_records'][0]
+        for field in ('status', 'note', 'actor', 'at'):
+            self.assertEqual(record[field], old[field])
+        self.assertFalse(record['stale'])
+        self.assertEqual(record['impact_review']['action'], 'keep')
+        self.assertEqual(record['impact_review']['actor'], 'Denetleyen')
+        self.apply(self.preview([self.source('A ölçümleri fiber bağlantı üzerinden B’ye aktarır.')]))
+        self.assertTrue(self.p['state']['assumption_records'][0]['stale'])
+
+    def test_schema_protocol_change_can_keep_decision_without_changing_tid(self):
+        old = self.decide_linked()
+        source_before = deepcopy(self.p['state']['source_catalog'])
+        connection = deepcopy(self.p['state']['architecture']['connections'][0])
+        connection['protocol'] = 'Ethernet'
+        commands = [dict(action='upsert_connection', id=connection['id'], value=connection)]
+        automatic = self.preview(commands)
+        self.assertTrue(automatic['document_review_required'])
+        self.assertEqual(automatic['assumption_review_candidates'][0]['suggested'], 'review')
+        self.apply(self.review_preview(commands, {old['id']:'keep'}))
+        self.assertFalse(self.p['state']['assumption_records'][0]['stale'])
+        self.assertEqual(self.p['state']['assumption_records'][0]['status'],'accepted')
+        self.assertEqual(self.p['state']['source_catalog'], source_before)
+
+    def test_force_review_unlinked_persists_and_new_decision_completes_review(self):
+        old = self.decide_linked(linked=False)
+        preview = self.review_preview([self.source()], {old['id']:'review'})
+        self.assertEqual(preview['assumption_review_candidates'][0]['suggested'], 'keep')
+        self.apply(preview)
+        record = self.store.get(self.p['id'])['state']['assumption_records'][0]
+        self.assertEqual(record['status'], 'accepted')
+        self.assertTrue(record['stale'])
+        self.assertIn('Mühendis', record['stale_reason'])
+        self.apply(self.preview([self.source('Bağımsız bir kaynak değişikliği.')]))
+        self.assertTrue(self.p['state']['assumption_records'][0]['stale'])
+        record = deepcopy(self.p['state']['assumption_records'][0])
+        record.update(status='rejected', note='Yeni bilgi ile reddedildi')
+        self.apply(self.preview([dict(action='upsert_assumption',id=record['id'],value=record)]))
+        self.assertFalse(self.p['state']['assumption_records'][0]['stale'])
+        self.assertEqual(self.p['state']['assumption_records'][0]['impact_review'], {})
+
+    def test_review_choice_undo_redo_and_export_import_preserve_prior_decision(self):
+        record = self.decide_linked(linked=False)
+        before = deepcopy(self.p['state'])
+        self.apply(self.review_preview([self.source()], {record['id']:'review'}))
+        after = deepcopy(self.p['state'])
+        self.change('undo'); self.assertEqual(self.p['state'],before)
+        self.change('redo'); self.assertEqual(self.p['state'],after)
+        package = self.client.get(self.url+'/export')
+        imported = self.client.post('/api/documents?name=review.zip', content=package.content, headers=self.headers)
+        self.assertEqual(imported.status_code,200,imported.text)
+        self.assertEqual(imported.json()['project']['state']['assumption_records'][0]['impact_review'],after['assumption_records'][0]['impact_review'])
+
+    def test_preview_rejects_unknown_pending_and_invalid_review_choices(self):
+        pending = self.p['state']['assumption_records'][0]
+        for choices in ({pending['id']:'keep'}, {'missing':'review'}, {pending['id']:'accept'}):
+            response=self.client.post(self.url+'/preview',headers=self.headers,json=dict(version=self.p['version'],commands=[self.source()],actor='Mühendis',assumption_reviews=choices))
+            self.assertEqual(response.status_code,422,response.text)
+        self.assertEqual(self.store.get(self.p['id'])['version'],self.p['version'])
+
+    def test_preview_choice_cannot_be_applied_after_new_version(self):
+        record=self.decide_linked()
+        preview=self.review_preview([self.source()],{record['id']:'keep'})
+        self.apply(self.preview([self.source('Yeni bir teknik gereksinim.')]))
+        with self.assertRaises(ConflictError):
+            self.apply(preview)
+        self.assertTrue(self.p['state']['assumption_records'][0]['stale'])
+
+    def test_original_document_download_ignores_working_edits(self):
+        original=self.p['original']['source_catalog'][0]['text']
+        self.apply(self.preview([self.source('Yeni çalışma metni.')]))
+        for ext in ('txt', 'docx'):
+            response=self.client.get(self.url+'/tid',params={'format':ext,'original':'true'})
+            self.assertEqual(response.status_code,200)
+            text=response.content.decode('utf-8-sig') if ext=='txt' else '\n'.join(p.text for p in Document(io.BytesIO(response.content)).paragraphs)
+            self.assertIn(original,text)
+            self.assertNotIn('Yeni çalışma metni.',text)
+            self.assertIn('TID_orijinal',response.headers['content-disposition'])
+
     def test_old_project_migration_is_stable_and_read_only(self):
         before=self.path.read_bytes()
         self.assertEqual(self.p['version'],0)

@@ -25,8 +25,14 @@ function FieldValue({ value, field, project, original = false }) {
       value.map((id) => objectName(project, id, original)).join(", ") ||
       "Seçilmemiş"
     );
+  if (field === "impact_review")
+    return value.action === "review"
+      ? "Mühendis yeniden değerlendirme istedi"
+      : value.action === "keep"
+        ? "Yeniden değerlendirmeye gerek yok"
+        : "Belirtilmemiş";
   const names = {
-    pending: "Bekliyor",
+    pending: "İnceleme bekliyor",
     accepted: "Kabul edildi",
     rejected: "Reddedildi",
     waiting: "Bilgi bekliyor",
@@ -70,6 +76,7 @@ function FieldValue({ value, field, project, original = false }) {
   return Array.isArray(value) ? value.join(", ") : String(value);
 }
 const fields = {
+  impact_review: "Yeniden inceleme seçimi",
   name: "Ad",
   label: "Bağlantı etiketi",
   description: "Açıklama",
@@ -146,7 +153,7 @@ export function HistoryChanges({ project, onSelect }) {
           : kind === "finding"
             ? readableText(current?.title || old?.title, project)
             : kind === "assumption"
-              ? `Varsayım ${Number(id) + 1}`
+              ? current?.text || old?.text || "Varsayım"
               : objectName(project, id, !current);
         return { id, kind, old, current, changedFields, name };
       })

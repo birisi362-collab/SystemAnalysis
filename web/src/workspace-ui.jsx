@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import { X } from "lucide-react";
-export {api, setToken} from "./workbench-api.js";
+export { api, setToken } from "./workbench-api.js";
 
 export const cats = {
   system: "Sistem",
@@ -36,7 +36,7 @@ export function Field({ label, children }) {
     </label>
   );
 }
-export function Drawer({ title, onClose, children }) {
+export function Drawer({ title, onClose, children, className = "" }) {
   const ref = useRef();
   useEffect(() => {
     const prev = document.activeElement;
@@ -49,7 +49,7 @@ export function Drawer({ title, onClose, children }) {
   return (
     <dialog
       ref={ref}
-      className="workspace-drawer"
+      className={"workspace-drawer " + className}
       onCancel={(e) => {
         e.preventDefault();
         onClose();

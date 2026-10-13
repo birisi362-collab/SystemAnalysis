@@ -11,21 +11,14 @@ export function StartPanel({
   onClose,
   reevaluate = false,
   retryJob = null,
+  modelSettings,
+  onModelSettings,
 }) {
   const [value, setValue] = useState({
-      profile:
-        retryJob?.profile ||
-        bootstrap.profiles.find((p) => p.id === "openrouter_nemotron")?.id ||
-        bootstrap.profiles[0]?.id ||
-        "",
       input_path: "",
-      api_key: "",
       two_pass: true,
       demo: false,
-      max_tokens: retryJob?.max_tokens || 32768,
       ...(retryJob ? { retry_job_id: retryJob.id } : {}),
-      timeout: retryJob?.timeout || 600,
-      ...(retryJob?.model ? { model: retryJob.model } : {}),
     }),
     [filename, setFilename] = useState(""),
     [working, setWorking] = useState(false),
@@ -115,7 +108,12 @@ export function StartPanel({
           try {
             const job = await api(
               reevaluate ? `/projects/${project.id}/review` : "/analysis",
-              value,
+              {
+                ...value,
+                ...modelSettings.getSettings(
+                  retryJob?.profile || modelSettings.profile,
+                ),
+              },
             );
             onJob(job);
             onClose();
@@ -128,26 +126,20 @@ export function StartPanel({
       >
         <Field label="Model profili">
           <select
-            value={value.profile}
-            onChange={(e) => set("profile", e.target.value)}
+            value={retryJob?.profile || modelSettings.profile}
+            disabled={!!retryJob}
+            onChange={(e) => modelSettings.select(e.target.value)}
           >
             {bootstrap.profiles.map((p) => (
               <option value={p.id} key={p.id}>
-                {p.id} · {p.model}
+                {modelSettings.getSettings(p.id).model || p.id}
               </option>
             ))}
           </select>
         </Field>
+        <Button onClick={onModelSettings}>Model Ayarları</Button>
         <details>
-          <summary>Bağlantı ve gelişmiş seçenekler</summary>
-          <Field label="API anahtarı (yerel ayar varsa boş bırakın)">
-            <input
-              type="password"
-              autoComplete="off"
-              value={value.api_key}
-              onChange={(e) => set("api_key", e.target.value)}
-            />
-          </Field>
+          <summary>Belge seçenekleri</summary>
           {!reevaluate && (
             <Field label="Yerel belge yolu">
               <input
@@ -156,59 +148,6 @@ export function StartPanel({
               />
             </Field>
           )}
-          <Field label="Sunucu adresi (isteğe bağlı)">
-            <input
-              value={value.base_url || ""}
-              onChange={(e) => set("base_url", e.target.value)}
-            />
-          </Field>
-          <Field label="Model adı (isteğe bağlı)">
-            <input
-              value={value.model || ""}
-              onChange={(e) => set("model", e.target.value)}
-            />
-          </Field>
-          <Field label="Çıktı token sınırı">
-            <input
-              type="number"
-              min={512}
-              max={65536}
-              step={512}
-              required
-              value={value.max_tokens}
-              onChange={(e) =>
-                set(
-                  "max_tokens",
-                  e.target.value === "" ? "" : Number(e.target.value),
-                )
-              }
-            />
-          </Field>
-          <p className="micro">
-            Sınır her model çağrısı içindir. Büyük değerlendirmeler otomatik
-            bölünür. Küçük bir bölüm de kesilirse sağlayıcının desteklediği
-            ölçüde sınırı artırabilirsiniz.
-          </p>
-          <Field label="Toplam süre sınırı (saniye)">
-            <input
-              type="number"
-              min={10}
-              max={1800}
-              step={10}
-              required
-              value={value.timeout}
-              onChange={(e) =>
-                set(
-                  "timeout",
-                  e.target.value === "" ? "" : Number(e.target.value),
-                )
-              }
-            />
-          </Field>
-          <p className="micro">
-            Süre bütün değerlendirme içindir. Sınırda tamamlanan sonuçlar
-            korunur; kalan bölümler ayrıca sürdürülebilir.
-          </p>
           {!reevaluate && (
             <label className="check">
               <input

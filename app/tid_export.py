@@ -2,11 +2,11 @@
 from io import BytesIO
 
 
-def export_tid(project, format='docx'):
+def export_tid(project, format='docx', original=False):
     state = project['state']
-    entries = state['source_catalog']
+    entries = project['original']['source_catalog'] if original else state['source_catalog']
     title = project['name']+' — Teknik İsterler Dokümanı'
-    subtitle = f"Çalışma sürümü {state['document_revision']} · Proje sürümü {project['version']}"
+    subtitle = 'Orijinal belgeden alınan metin' if original else f"Çalışma sürümü {state['document_revision']} · Proje sürümü {project['version']}"
     if format == 'txt':
         lines = [title, subtitle, 'Mühendislik çalışma kopyası', '']
         section = None
