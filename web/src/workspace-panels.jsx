@@ -927,6 +927,9 @@ export function TopicPanel({
       {topic.decision && (
         <details className="previous-decision">
           <summary>Önceki karar</summary>
+          {topic.decision.stale && (
+            <p className="notice amber">{topic.decision.stale_reason}</p>
+          )}
           <p>{topic.decision.note}</p>
           <small>
             {topic.decision.actor} ·{" "}

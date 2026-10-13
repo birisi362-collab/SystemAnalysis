@@ -1,12 +1,7 @@
 """Engineering findings only; unlinked document text never creates work."""
 from copy import deepcopy
-import hashlib
-import json
 import re
-
-
-def fingerprint(value):
-    return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+from .decision_dependencies import fingerprint, dependency_snapshot, dependency_reason, normalized
 
 
 def source_labels(catalog):
@@ -55,31 +50,49 @@ def build_topics(final, issues, decisions):
         tid = fingerprint(('finding', finding.id))[:20]
         context = proposal_context(architecture, f)
         source_ids = sorted({e.requirement_id for e in finding.evidence})
-        fp = fingerprint({'finding': f, 'objects': context, 'sources': [s for s in final.source_catalog if s['requirement_id'] in source_ids]})
+        legacy_fp = fingerprint({'finding': f, 'objects': context, 'sources': [s for s in final.source_catalog if s['requirement_id'] in source_ids]})
+        component_ids = set(finding.related_component_ids)
+        connection_ids = set(finding.related_connection_ids)
+        for change in finding.proposed_changes:
+            (component_ids if change.kind == 'component' else connection_ids).add(change.id)
+            if change.kind == 'component' and change.action == 'remove':
+                connection_ids.update(e['id'] for e in architecture['connections'] if change.id in (e['source'], e['target']))
+        snapshot = dependency_snapshot({'architecture':architecture, 'source_catalog':final.source_catalog}, source_ids, component_ids, connection_ids)
+        content = normalized({k:v for k,v in f.items() if k not in ('id', 'title', 'proposed_changes')})
+        content['proposed_changes'] = [normalized(c) for c in f['proposed_changes']]
+        snapshot['finding'] = content
         decision = deepcopy(decisions.get('topic:'+tid) or decisions.get('finding:'+finding.id))
-        if decision:
-            decision['stale'] = bool(decision.get('stale')) or (decision.get('fingerprint_version') == 2 and decision.get('fingerprint') != fp)
-            if decision['stale']:
-                decision['stale_reason'] = 'Bu konuyla ilgili bilgi değişti. Önceki kararınızı yeniden değerlendirebilirsiniz.'
         topics.append(dict(id=tid, finding_id=finding.id, kind='engineering', origin='engineering', active=True,
             title=readable(finding.title, display), description=readable(finding.description, display),
             suggestion=readable(finding.recommended_action, display), object_ids=list(context),
             primary_object_ids=finding.related_component_ids+finding.related_connection_ids,
             source_ids=source_ids, primary_source_ids=source_ids, checks=[], dependency_kind='finding',
-            context_label=' · '.join(labels.get(s, s) for s in source_ids), fingerprint=fp,
+            context_label=' · '.join(labels.get(s, s) for s in source_ids), fingerprint=fingerprint(snapshot),
+            dependency_snapshot=snapshot, legacy_fingerprint=legacy_fp,
             priority='high' if finding.severity in ('high','critical') else 'normal', decision=decision,
-            status='reopened' if decision and decision.get('stale') else 'completed' if decision and decision.get('status') in ('resolved','accepted','rejected','merged','approved','applied') else 'open'))
+            status='open'))
     by_id = {t['id']: t for t in topics}
-    def merged_fp(tid, seen):
+    def merged_basis(tid, seen, legacy=False):
         if tid not in by_id or tid in seen: return None
         t = by_id[tid]; target = (t['decision'] or {}).get('merged_into')
-        return fingerprint([t['fingerprint'], merged_fp(target, seen | {tid})]) if target else t['fingerprint']
-    merged = {t['id']: merged_fp(t['id'], set()) for t in topics}
+        if legacy:
+            return fingerprint([t['legacy_fingerprint'], merged_basis(target, seen | {tid}, True)]) if target else t['legacy_fingerprint']
+        return {**t['dependency_snapshot'], 'merged':merged_basis(target, seen | {tid})} if target else t['dependency_snapshot']
+    merged = {t['id']: merged_basis(t['id'], set()) for t in topics}
+    legacy = {t['id']: merged_basis(t['id'], set(), True) for t in topics}
     for t in topics:
+        t['dependency_snapshot'] = merged[t['id']]
+        t['fingerprint'] = fingerprint(t['dependency_snapshot'])
+        t['legacy_fingerprint'] = legacy[t['id']]
         d = t['decision']
-        if d and d.get('merged_into'):
-            t['fingerprint'] = merged[t['id']]
-            if d.get('fingerprint_version') == 2:
-                d['stale'] = d.get('fingerprint') != t['fingerprint']
-                t['status'] = 'reopened' if d['stale'] else 'completed'
+        if d:
+            if d.get('fingerprint_version') == 3 and d.get('dependency_snapshot') is not None:
+                d['stale'] = d['dependency_snapshot'] != t['dependency_snapshot']
+                d['stale_reason'] = dependency_reason(d['dependency_snapshot'], t['dependency_snapshot'],
+                    {'architecture':architecture, 'source_catalog':final.source_catalog}) if d['stale'] else ''
+            elif d.get('fingerprint_version') == 2:
+                d['stale'] = bool(d.get('stale')) or d.get('fingerprint') != t['legacy_fingerprint']
+            if d.get('stale') and not d.get('stale_reason'):
+                d['stale_reason'] = 'Bu konuyla ilgili teknik bilgi değişti. Önceki kararınızı yeniden değerlendirebilirsiniz.'
+            t['status'] = 'reopened' if d.get('stale') else 'completed' if d.get('status') in ('resolved','accepted','rejected','merged','approved','applied') else 'open'
     return sorted(topics, key=lambda t: (t['status']=='completed', t['priority']!='high', t['id']))

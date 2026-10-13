@@ -453,11 +453,12 @@ function Workspace({
               {project.state.assumption_records.map((r) => (
                 <div key={r.id}>
                   <p>{r.text}</p>
-                  <span className="badge">
-                    {r.stale
-                      ? "Yeniden incelenmeli"
-                      : assumptionStates[r.status]}
-                  </span>
+                  <span className="badge">{assumptionStates[r.status]}</span>
+                  {r.stale && (
+                    <p className="notice amber">
+                      <b>Yeniden incelenmeli:</b> {r.stale_reason}
+                    </p>
+                  )}
                 </div>
               ))}
               <Button onClick={() => onEngineering("assumptions")}>

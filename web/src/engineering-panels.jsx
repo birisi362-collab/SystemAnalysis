@@ -38,6 +38,8 @@ const fields = {
   connection_ids: "İlgili bağlantılar",
   category: "Sınıf",
   stale: "Yeniden inceleme",
+  stale_reason: "Yeniden inceleme gerekçesi",
+  scope: "Karar kapsamı",
   original_id: "Doküman numarası",
 };
 const display = (value) =>
@@ -55,7 +57,9 @@ const display = (value) =>
                 : x,
             )
             .join("\n") || "—"
-        : assumptionStates[value] || String(value);
+        : assumptionStates[value] ||
+          { linked: "İlgili öğeler", project: "Proje genelinde" }[value] ||
+          String(value);
 
 export function ChangePreview({
   preview,
@@ -99,10 +103,16 @@ export function ChangePreview({
           </p>
         )}
         {!!preview.stale_assumptions.length && (
-          <p>
-            Yeniden incelenecek varsayımlar:{" "}
-            {preview.stale_assumptions.join(", ")}
-          </p>
+          <div>
+            <p>Bu değişiklik nedeniyle yeniden incelenecek varsayımlar:</p>
+            {(preview.stale_assumption_details || []).map((r) => (
+              <p key={r.id}>
+                <b>{r.text}</b>
+                <br />
+                {r.reason}
+              </p>
+            ))}
+          </div>
         )}
         {!!Object.keys(preview.stale_links).length && (
           <p>
@@ -492,6 +502,7 @@ export function AssumptionsPanel({ project, onCommands, onAssistant, busy }) {
             source_ids: [],
             component_ids: [],
             connection_ids: [],
+            scope: "linked",
             status: "pending",
             note: "",
             alternative: "",
@@ -595,9 +606,20 @@ export function AssumptionsPanel({ project, onCommands, onAssistant, busy }) {
             onChange={(v) => set("connection_ids", v)}
           />
           <p className="micro">
-            Çoklu seçim için Ctrl tuşunu kullanın. Bağlantı seçilmezse karar
-            bütün proje kapsamında takip edilir.
+            Çoklu seçim için Ctrl tuşunu kullanın. Karar yalnızca seçilen teknik
+            dayanaklarla takip edilir. Öğe seçilmezse projenin diğer
+            değişiklikleri bu kararı yeniden incelemeye açmaz.
           </p>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={edit.value.scope === "project"}
+              onChange={(e) =>
+                set("scope", e.target.checked ? "project" : "linked")
+              }
+            />
+            Bu karar bütün projenin teknik içeriğine bağlı
+          </label>
           <div className="engineering-actions">
             <Button
               type="submit"
@@ -631,11 +653,23 @@ export function AssumptionsPanel({ project, onCommands, onAssistant, busy }) {
           <article className="change-card" key={r.id}>
             <div className="inline spread">
               <strong>{r.id}</strong>
-              <span className={"badge " + (r.stale ? "amber" : "")}>
-                {r.stale ? "Yeniden incelenmeli" : assumptionStates[r.status]}
-              </span>
+              <span className="badge">{assumptionStates[r.status]}</span>
             </div>
             <p>{r.text}</p>
+            {r.stale && (
+              <p className="notice amber">
+                <b>Yeniden incelenmeli:</b> {r.stale_reason}
+              </p>
+            )}
+            {r.scope !== "project" &&
+              !["source_ids", "component_ids", "connection_ids"].some(
+                (key) => r[key]?.length,
+              ) && (
+                <p className="micro">
+                  İlgili öğeler belirtilmemiş; proje değişiklikleri bu kararı
+                  otomatik olarak yeniden incelemeye açmaz.
+                </p>
+              )}
             {r.note && (
               <p>
                 <b>Mühendis gerekçesi:</b> {r.note}
@@ -808,9 +842,7 @@ export function AssistantPanel({
             placeholder="Bu bağlantı hangi istere dayanıyor?"
           />
         </Field>
-        <details
-          open
-        >
+        <details open>
           <summary>Model bağlantısı</summary>
           <Field label="Model profili">
             <select

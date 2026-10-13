@@ -13,7 +13,7 @@ import zipfile
 from docx import Document
 from fastapi.testclient import TestClient
 
-from app.engineering_workspace import workspace_fingerprint
+from app.engineering_workspace import workspace_fingerprint, legacy_assumption_basis, upgrade_state
 from app.review_store import ReviewStore, ConflictError
 from app.validator_audit import baseline
 from app.workbench import create_app
@@ -133,6 +133,183 @@ class EngineeringTests(unittest.TestCase):
         edge=deepcopy(self.p['state']['architecture']['connections'][0]);edge['direction']='bidirectional'
         self.change('upsert_connection','E1',edge)
         self.assertTrue(self.p['state']['assumption_records'][0]['stale'])
+
+    def decide_assumption(self, **links):
+        record=deepcopy(self.p['state']['assumption_records'][0])
+        record.update(status='accepted',note='İncelenen teknik karar',**links)
+        self.apply(self.preview([dict(action='upsert_assumption',id=record['id'],value=record)]))
+        return deepcopy(self.p['state']['assumption_records'][0])
+
+    def test_unlinked_decision_does_not_follow_the_whole_project(self):
+        self.decide_assumption()
+        comp=deepcopy(self.p['state']['architecture']['components'][0]);comp['description']='Yeni teknik görev'
+        self.change('upsert_component','A',comp)
+        edge=deepcopy(self.p['state']['architecture']['connections'][0]);edge['direction']='bidirectional'
+        self.change('upsert_connection','E1',edge)
+        self.apply(self.preview([self.source()]))
+        r=self.p['state']['assumption_records'][0]
+        self.assertEqual(r['status'],'accepted');self.assertFalse(r['stale'])
+
+    def test_connection_decision_does_not_follow_other_endpoint_details_or_interfaces(self):
+        self.decide_assumption(connection_ids=['E1'])
+        comp=deepcopy(self.p['state']['architecture']['components'][1]);comp['description']='Bağlantıdan bağımsız yeni görev'
+        self.change('upsert_component','B',comp)
+        edge=deepcopy(self.p['state']['architecture']['connections'][0]);edge.update(id='E2',target='C')
+        self.change('upsert_connection','',edge)
+        self.assertFalse(self.p['state']['assumption_records'][0]['stale'])
+
+    def test_cosmetic_changes_keep_decision_and_evidence_current(self):
+        self.decide_assumption(connection_ids=['E1'])
+        comp=deepcopy(self.p['state']['architecture']['components'][0]);comp['name']='Okunaklı ad'
+        self.change('upsert_component','A',comp)
+        source=self.source('  '+self.p['state']['source_catalog'][0]['text']+'  ')
+        source['value'].update(section='Yeni bölüm başlığı',original_id='SYS-1')
+        self.apply(self.preview([source]))
+        self.change('layout',value={'A':dict(x=20,y=40)})
+        restarted=ReviewStore(self.store.path).get(self.p['id'])
+        self.assertFalse(restarted['state']['assumption_records'][0]['stale'])
+        self.assertEqual(restarted['state']['stale_links'],{})
+
+    def test_source_only_decision_tracks_source_text_not_supported_objects(self):
+        self.decide_assumption(source_ids=['G-01'])
+        edge=deepcopy(self.p['state']['architecture']['connections'][0]);edge['direction']='bidirectional'
+        self.change('upsert_connection','E1',edge)
+        self.assertFalse(self.p['state']['assumption_records'][0]['stale'])
+        self.apply(self.preview([self.source()]))
+        self.assertTrue(self.p['state']['assumption_records'][0]['stale'])
+
+    def test_component_decision_tracks_its_incident_interfaces(self):
+        self.decide_assumption(component_ids=['A'])
+        edge=deepcopy(self.p['state']['architecture']['connections'][0]);edge['direction']='bidirectional'
+        self.change('upsert_connection','E1',edge)
+        self.assertTrue(self.p['state']['assumption_records'][0]['stale'])
+
+    def test_explicit_project_scope_tracks_technical_changes_but_not_names(self):
+        self.decide_assumption(scope='project')
+        comp=deepcopy(self.p['state']['architecture']['components'][-1]);comp['name']='Yeni ad'
+        self.change('upsert_component','C',comp)
+        self.assertFalse(self.p['state']['assumption_records'][0]['stale'])
+        comp['description']='Yeni teknik işlev'
+        self.change('upsert_component','C',comp)
+        self.assertTrue(self.p['state']['assumption_records'][0]['stale'])
+
+    def test_direction_change_preserves_decision_explains_impact_and_undo_redo(self):
+        record=self.decide_assumption(connection_ids=['E1'])
+        edge=deepcopy(self.p['state']['architecture']['connections'][0]);edge['direction']='bidirectional'
+        proposal=self.preview([dict(action='upsert_connection',id='E1',value=edge)])
+        self.assertEqual(proposal['stale_assumptions'],[record['id']])
+        self.assertIn('tek yönlü → çift yönlü',proposal['stale_assumption_details'][0]['reason'])
+        self.apply(proposal)
+        r=self.p['state']['assumption_records'][0]
+        self.assertTrue(r['stale']);self.assertEqual(r['status'],'accepted');self.assertEqual(r['note'],record['note'])
+        self.change('undo');self.assertFalse(self.p['state']['assumption_records'][0]['stale'])
+        self.change('redo');self.assertTrue(self.p['state']['assumption_records'][0]['stale'])
+
+    def test_endpoint_deletion_reopens_linked_decision(self):
+        self.decide_assumption(connection_ids=['E1'])
+        self.change('delete_component','B',{'cascade':True})
+        self.assertTrue(self.p['state']['assumption_records'][0]['stale'])
+        self.assertTrue(self.p['state']['assumption_records'][0]['stale_reason'])
+
+    def test_existing_stale_decision_is_not_reported_again_in_unrelated_preview(self):
+        self.decide_assumption(connection_ids=['E1'])
+        edge=deepcopy(self.p['state']['architecture']['connections'][0]);edge['direction']='bidirectional'
+        self.change('upsert_connection','E1',edge)
+        comp=deepcopy(self.p['state']['architecture']['components'][-1]);comp['description']='Yeni bağımsız görev'
+        proposal=self.preview([dict(action='upsert_component',id='C',value=comp)])
+        self.assertEqual(proposal['stale_assumptions'],[])
+        self.assertTrue(self.p['state']['assumption_records'][0]['stale'])
+
+    def test_order_and_evidence_whitespace_do_not_reopen(self):
+        self.decide_assumption(scope='project')
+        state=deepcopy(self.p['state']);state['architecture']['components'].reverse()
+        state['architecture']['connections'][0]['evidence'][0]['quote']='  '+state['architecture']['connections'][0]['evidence'][0]['quote']+'  '
+        self.assertFalse(upgrade_state(state,self.p['original'])['assumption_records'][0]['stale'])
+
+    def simulate_old_revision(self, baseline, changed):
+        # Reproduce snapshots written by the previous release, including a
+        # false stale flag. Production migration must read, never rewrite them.
+        with self.store.db() as db:
+            seq=self.p['current_revision']
+            db.execute('UPDATE revisions SET state=? WHERE project_id=? AND seq=?',(json.dumps(baseline),self.p['id'],seq))
+            db.execute('INSERT INTO revisions VALUES(?,?,?,?)',(self.p['id'],seq+1,seq,json.dumps(changed)))
+            db.execute('UPDATE projects SET current=?,version=version+1 WHERE id=?',(seq+1,self.p['id']))
+        self.p=self.store.get(self.p['id'])
+        with self.store.db() as db:
+            raw=json.loads(db.execute('SELECT state FROM revisions WHERE project_id=? AND seq=?',(self.p['id'],seq+1)).fetchone()['state'])
+            self.assertEqual(raw,changed)
+
+    def legacy_decision_states(self, **links):
+        self.decide_assumption(**links)
+        baseline=deepcopy(self.p['state']);r=baseline['assumption_records'][0]
+        r['basis']=legacy_assumption_basis(baseline,r)
+        for key in ('basis_version','basis_snapshot','scope','stale_reason'):r.pop(key,None)
+        changed=deepcopy(baseline);changed['assumption_records'][0]['stale']=True
+        return baseline,changed
+
+    def test_old_unlinked_false_stale_decision_is_recovered_read_only(self):
+        baseline,changed=self.legacy_decision_states()
+        changed['architecture']['connections'][0]['direction']='bidirectional'
+        self.simulate_old_revision(baseline,changed)
+        self.assertFalse(self.p['state']['assumption_records'][0]['stale'])
+        self.assertEqual(self.p['state']['assumption_records'][0]['basis_version'],2)
+
+    def test_old_linked_cosmetic_change_is_recovered_but_technical_change_is_preserved(self):
+        baseline,changed=self.legacy_decision_states(connection_ids=['E1'])
+        changed['architecture']['components'][0]['name']='Yeni ad'
+        self.simulate_old_revision(baseline,changed)
+        self.assertFalse(self.p['state']['assumption_records'][0]['stale'])
+        technical=deepcopy(changed);technical['architecture']['connections'][0]['direction']='bidirectional'
+        self.simulate_old_revision(changed,technical)
+        self.assertTrue(self.p['state']['assumption_records'][0]['stale'])
+        self.assertIn('yönü',self.p['state']['assumption_records'][0]['stale_reason'])
+
+    def test_old_snapshot_without_baseline_does_not_silently_clear_real_change(self):
+        baseline,changed=self.legacy_decision_states(connection_ids=['E1'])
+        changed['architecture']['connections'][0]['direction']='bidirectional'
+        restored=self.store.restore_snapshot({**self.p,'state':changed})
+        self.assertTrue(restored['state']['assumption_records'][0]['stale'])
+        self.assertIn('Eski kararın teknik dayanağı bulunamadı',restored['state']['assumption_records'][0]['stale_reason'])
+
+    def test_old_finding_decision_migrates_cosmetic_change_and_preserves_real_change(self):
+        edge=self.p['state']['architecture']['connections'][0]
+        self.change('add_finding',value=dict(id='F1',type='ambiguous',severity='medium',title='Yönü inceleyin',
+            description='Arayüzün yönü belirsiz.',evidence=edge['evidence'],related_connection_ids=['E1']))
+        topic=self.p['topics'][0];key='topic:'+topic['id']
+        self.change('set_topic_decision',topic['id'],{'status':'accepted'})
+        baseline=deepcopy(self.p['state']);d=baseline['decisions'][key]
+        d.update(fingerprint_version=2,fingerprint=self.p['topics'][0]['legacy_fingerprint'])
+        d.pop('dependency_snapshot',None)
+        changed=deepcopy(baseline);changed['architecture']['components'][0]['name']='Yeni ad'
+        changed['source_catalog'][0]['section']='Yeni bölüm başlığı';changed['decisions'][key]['stale']=True
+        self.simulate_old_revision(baseline,changed)
+        self.assertEqual(self.p['topics'][0]['status'],'completed')
+        self.assertFalse(self.p['state']['decisions'][key]['stale'])
+        technical=deepcopy(changed);technical['architecture']['connections'][0]['direction']='bidirectional'
+        self.simulate_old_revision(changed,technical)
+        self.assertEqual(self.p['topics'][0]['status'],'reopened')
+        self.assertIn('yönü',self.p['topics'][0]['decision']['stale_reason'])
+
+    def test_change_package_compares_final_state_not_intermediate_steps(self):
+        self.decide_assumption(connection_ids=['E1'])
+        edge=deepcopy(self.p['state']['architecture']['connections'][0]);changed=deepcopy(edge);changed['direction']='bidirectional'
+        proposal=self.preview([dict(action='upsert_connection',id='E1',value=changed),dict(action='upsert_connection',id='E1',value=edge)])
+        self.assertEqual(proposal['stale_assumptions'],[])
+        self.apply(proposal)
+        self.assertFalse(self.p['state']['assumption_records'][0]['stale'])
+
+    def test_pre_workspace_assumption_text_change_keeps_its_previous_decision_stale(self):
+        record=self.decide_assumption()
+        baseline=deepcopy(self.p['state']);baseline.pop('assumption_records')
+        baseline['decisions']['assumption:0']=dict(status='approved',note=record['note'],actor=record['actor'],at=record['at'],stale=False)
+        changed=deepcopy(baseline);changed['architecture']['assumptions'][0]='Yeni bir teknik varsayım.'
+        changed['decisions']['assumption:0']['stale']=True
+        self.simulate_old_revision(baseline,changed)
+        r=self.p['state']['assumption_records'][0]
+        self.assertEqual(r['status'],'accepted');self.assertTrue(r['stale'])
+        self.assertIn('Varsayımın metni',r['stale_reason'])
+        restored=self.store.restore_snapshot({**self.p,'state':changed})
+        self.assertTrue(restored['state']['assumption_records'][0]['stale'])
 
     def test_rejection_alone_does_not_delete_objects(self):
         arch=deepcopy(self.p['state']['architecture']);record=deepcopy(self.p['state']['assumption_records'][0])

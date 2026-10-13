@@ -16,7 +16,8 @@ from .source_relations import source_relations
 from .review_topics import build_topics, source_labels, proposal_context, fingerprint
 from .review_runner import finding_key
 from .engineering_workspace import (upgrade_state, current_document, SourceEdit, AssumptionRecord,
-                                    assumption_basis, impact_summary, workspace_fingerprint)
+                                    accept_assumption_basis, legacy_assumption_basis, impact_summary, workspace_fingerprint)
+from .decision_dependencies import technical_object, normalized
 
 
 def now():
@@ -179,16 +180,69 @@ class ReviewStore:
             self.save_conversation(pid, turn)
         return self.get(pid)
 
+    def upgrade_revision(self, db, pid, revision, original):
+        """Recover old decision baselines along this revision's active ancestry.
+
+        Lazy and read-only: no revisions are rewritten, and undone branches are
+        never used as the baseline for the current decision.
+        """
+        ancestors = None
+        current_state = json.loads(revision['state'])
+        def resolve(kind, key, record):
+            nonlocal ancestors
+            if not record.get('at'):
+                return None
+            if ancestors is None:
+                ancestors = []
+                cursor = revision
+                while cursor is not None:
+                    ancestors.append(json.loads(cursor['state']))
+                    cursor = db.execute('SELECT * FROM revisions WHERE project_id=? AND seq=?', (pid, cursor['parent'])).fetchone() if cursor['parent'] is not None else None
+                ancestors.reverse()
+            for previous in ancestors:
+                if kind == 'assumption':
+                    candidates = previous.get('assumption_records', [])
+                    if not candidates:
+                        candidates = []
+                        current_records = current_state.get('assumption_records', [])
+                        index = next((i for i,r in enumerate(current_records) if r['id'] == key), None)
+                        if index is None:
+                            index = next((i for i,t in enumerate(current_state['architecture'].get('assumptions', [])) if 'ASM-'+uuid.uuid5(uuid.NAMESPACE_URL, str(i)+':'+t).hex[:12] == key), None)
+                        for i, text in enumerate(previous['architecture'].get('assumptions', [])):
+                            old = previous.get('decisions', {}).get('assumption:'+str(i), {})
+                            candidates.append({**old, 'id':key if i == index else 'ASM-'+uuid.uuid5(uuid.NAMESPACE_URL, str(i)+':'+text).hex[:12], 'text':text})
+                    candidate = next((r for r in candidates if r['id'] == key), None)
+                    marker = 'basis'
+                else:
+                    candidate = previous.get('decisions', {}).get(key)
+                    if not candidate:
+                        finding = next((f for f in previous['analysis']['findings'] if 'topic:'+fingerprint(('finding', f['id']))[:20] == key), None)
+                        candidate = previous.get('decisions', {}).get('finding:'+finding['id']) if finding else None
+                    marker = 'fingerprint'
+                if not candidate or candidate.get('stale') or candidate.get('at') != record['at'] or candidate.get('actor') != record.get('actor'):
+                    continue
+                if candidate.get(marker) and candidate.get(marker) != record.get(marker):
+                    continue
+                if kind == 'assumption' and candidate.get('basis') and candidate['basis'] != legacy_assumption_basis(previous, candidate):
+                    continue
+                if kind == 'topic' and candidate.get('fingerprint_version') == 2:
+                    previous_final = FinalModel.model_validate({**current_document(original, previous), 'architecture':previous['architecture'], 'analysis':previous['analysis']})
+                    topic = next((t for t in build_topics(previous_final, [], previous.get('decisions', {})) if 'topic:'+t['id'] == key), None)
+                    if not topic or topic['legacy_fingerprint'] != candidate.get('fingerprint'):
+                        continue
+                return previous, candidate
+            return None
+        return upgrade_state(current_state, original, resolve)
+
     def get(self, pid):
         with self.db() as db:
             row = db.execute('SELECT * FROM projects WHERE id=?', (pid,)).fetchone()
             if row is None:
                 raise KeyError('İnceleme bulunamadı.')
             revision = db.execute('SELECT * FROM revisions WHERE project_id=? AND seq=?', (pid, row['current'])).fetchone()
-            state = json.loads(revision['state'])
+            original = json.loads(row['original'])
+            state = self.upgrade_revision(db, pid, revision, original)
             events = [dict(r) for r in db.execute('SELECT action,actor,reason,at,revision FROM events WHERE project_id=? ORDER BY id DESC', (pid,))]
-        original = json.loads(row['original'])
-        state = upgrade_state(state, original)
         final = FinalModel.model_validate({**current_document(original, state), 'architecture': state['architecture'], 'analysis': state['analysis']})
         issues = []
         topics = build_topics(final, issues, state['decisions'])
@@ -231,8 +285,8 @@ class ReviewStore:
                     raise ValueError('Yinelenecek değişiklik yok.')
                 current = redo.pop()
             else:
-                state = json.loads(rev['state'])
                 original = json.loads(row['original'])
+                state = self.upgrade_revision(db, pid, rev, original)
                 if action == 'apply_change_set':
                     preview = db.execute('SELECT * FROM change_previews WHERE id=? AND project_id=?', (command.get('value', {}).get('preview_id'), pid)).fetchone()
                     if not preview or preview['version'] != row['version']:
@@ -258,10 +312,6 @@ class ReviewStore:
         arch = state['architecture']
         before_final = FinalModel.model_validate({**current_document(original, state),'architecture':arch,'analysis':state['analysis']})
         before_topics = build_topics(before_final,[],state['decisions'])
-        for topic in before_topics:
-            d = state['decisions'].get('topic:'+topic['id']) or state['decisions'].get('finding:'+topic['finding_id'])
-            if d and d.get('fingerprint_version') != 2:
-                state['decisions']['topic:'+topic['id']] = {**d, 'fingerprint':topic['fingerprint'], 'fingerprint_version':2}
         sources = {s['requirement_id']: s for s in state['source_catalog']}
         components = {x['id'] for x in arch['components']}
         connections = {x['id'] for x in arch['connections']}
@@ -281,9 +331,10 @@ class ReviewStore:
                 raise ValueError('Bu nesne kimliği zaten kullanılıyor.')
             arch[field] = [obj if x['id'] == obj['id'] else x for x in items] if old else items + [obj]
             kind = 'component' if field == 'components' else 'connection'
-            affected.add(f"{kind}:{obj['id']}")
-            for ev in (old or {}).get('evidence', []) + obj.get('evidence', []):
-                affected.add('source:' + ev['requirement_id'])
+            if technical_object(old) != technical_object(obj):
+                affected.add(f"{kind}:{obj['id']}")
+                for ev in (old or {}).get('evidence', []) + obj.get('evidence', []):
+                    affected.add('source:' + ev['requirement_id'])
             state['stale_links'].pop(f"{kind}:{obj['id']}", None)
             state['provenance'][f"{kind}:{obj['id']}"] = dict(origin='engineer_edit' if any(o['id'] == obj['id'] for o in original['architecture'][field]) else 'engineer_added', actor=command['actor'], reason=command['reason'], at=now())
 
@@ -306,10 +357,12 @@ class ReviewStore:
                 item['locations'] = old.get('locations', []) if old else ['engineer:'+key]
                 state['source_catalog'] = [item if s['requirement_id']==key else s for s in state['source_catalog']] if old else state['source_catalog']+[item]
             state['document_revision'] += 1
-            affected.add('source:'+key)
+            technical_change = action == 'delete_source' or old is None or normalized(old['text']) != normalized(item['text'])
+            if technical_change:
+                affected.add('source:'+key)
             for kind, objects in [('component', arch['components']), ('connection', arch['connections']), ('finding', state['analysis']['findings'])]:
                 for obj in objects:
-                    if any(e['requirement_id']==key for e in obj.get('evidence', [])):
+                    if technical_change and any(e['requirement_id']==key for e in obj.get('evidence', [])):
                         oid = kind+':'+obj['id']
                         state['stale_links'][oid] = sorted(set(state['stale_links'].get(oid, [])+[key]))
                         affected.add(oid)
@@ -328,7 +381,8 @@ class ReviewStore:
                     raise ValueError('Varsayım mevcut olmayan kayda bağlanamaz.')
             if record['status'] != 'pending' and not record['note'].strip():
                 raise ValueError('Varsayım kararı için açıklama gerekli.')
-            record.update(actor=command['actor'], at=now(), stale=False, basis=assumption_basis(state, record))
+            record.update(actor=command['actor'], at=now())
+            accept_assumption_basis(state, record)
             state['assumption_records'] = [record if r['id']==key else r for r in state['assumption_records']] if existing else state['assumption_records']+[record]
             arch['assumptions'] = [r['text'] for r in state['assumption_records']]
         elif action in ('upsert_component', 'upsert_connection'):
@@ -342,7 +396,8 @@ class ReviewStore:
                 if obj['source'] == obj['target']:
                     raise ValueError('Bu sürümde aynı bileşene dönen bağlantı desteklenmiyor.')
                 old = next((x for x in arch['connections'] if x['id'] == obj['id']), {})
-                affected.update('component:' + x for x in [obj['source'], obj['target'], old.get('source', ''), old.get('target', '')] if x)
+                if technical_object(old) != technical_object(obj):
+                    affected.update('component:' + x for x in [obj['source'], obj['target'], old.get('source', ''), old.get('target', '')] if x)
             put('components' if action == 'upsert_component' else 'connections', obj)
         elif action in ('delete_component', 'delete_connection'):
             if key not in (components if action == 'delete_component' else connections):
@@ -406,7 +461,7 @@ class ReviewStore:
                 state = self.apply(state, original, {**command, 'action':('delete_' if c['action']=='remove' else 'upsert_')+c['kind'], 'id':c['id'] if old else '', 'value':{'cascade':True} if c['action']=='remove' else obj})
             final = FinalModel.model_validate({**current_document(original, state), 'architecture':state['architecture'], 'analysis':state['analysis']})
             updated = next(t for t in build_topics(final, [], state['decisions']) if t['finding_id'] == key)
-            state['decisions']['topic:'+topic['id']] = dict(status='applied', note=command['reason'], actor=command['actor'], at=now(), stale=False, fingerprint=updated['fingerprint'], fingerprint_version=2)
+            state['decisions']['topic:'+topic['id']] = dict(status='applied', note=command['reason'], actor=command['actor'], at=now(), stale=False, fingerprint=updated['fingerprint'], fingerprint_version=3, dependency_snapshot=updated['dependency_snapshot'])
             return upgrade_state(state, original)
         elif action == 'append_review':
             analysis = AnalysisResult.model_validate(value['analysis']).model_dump()
@@ -452,10 +507,11 @@ class ReviewStore:
                     seen.add(cursor)
                     cursor=state['decisions'].get('topic:'+cursor,{}).get('merged_into')
             snapshot={k:v for k,v in topic.items() if k not in ('decision',)}
-            state['decisions']['topic:'+key]=dict(status=status, note=command['reason'], actor=command['actor'], at=now(), stale=False, fingerprint=topic['fingerprint'], fingerprint_version=2, snapshot=snapshot, merged_into=target)
+            state['decisions']['topic:'+key]=dict(status=status, note=command['reason'], actor=command['actor'], at=now(), stale=False, fingerprint=topic['fingerprint'], fingerprint_version=3, dependency_snapshot=topic['dependency_snapshot'], snapshot=snapshot, merged_into=target)
             # Calculate the newly selected merge dependency, including any target chain.
             updated=next(t for t in build_topics(final,[],state['decisions']) if t['id']==key)
             state['decisions']['topic:'+key]['fingerprint']=updated['fingerprint']
+            state['decisions']['topic:'+key]['dependency_snapshot']=updated['dependency_snapshot']
         elif action == 'set_decision':
             kind, _, oid = key.partition(':')
             valid = {'component': components, 'connection': connections, 'source': set(sources), 'finding': {f['id'] for f in state['analysis']['findings']}, 'assumption': {str(i) for i, _ in enumerate(arch['assumptions'])}}
@@ -479,7 +535,8 @@ class ReviewStore:
             state['decisions'][key] = dict(status=status, note=command['reason'], actor=command['actor'], at=now(), stale=False, merged_into=target)
             if kind == 'assumption':
                 record = state['assumption_records'][int(oid)]
-                record.update(status={'approved':'accepted','rejected':'rejected','needs_review':'pending'}[status],note=command['reason'],actor=command['actor'],at=now(),stale=False,basis=assumption_basis(state,record))
+                record.update(status={'approved':'accepted','rejected':'rejected','needs_review':'pending'}[status],note=command['reason'],actor=command['actor'],at=now())
+                accept_assumption_basis(state, record)
         elif action in ('add_finding', 'edit_finding'):
             obj = Finding.model_validate(value).model_dump()
             exists = any(f['id'] == obj['id'] for f in state['analysis']['findings'])
@@ -548,7 +605,7 @@ class ReviewStore:
                 for field, valid in [('source_ids', {s['requirement_id'] for s in state['source_catalog']}), ('component_ids', {o['id'] for o in state['architecture']['components']}), ('connection_ids', {o['id'] for o in state['architecture']['connections']})]:
                     if set(record[field])-valid:
                         raise ValueError('Kararın bağlı olduğu kayıt pakette kaldırılıyor. Varsayım bağlantılarını da düzenleyin.')
-                record.update(basis=assumption_basis(state, record), stale=False)
+                accept_assumption_basis(state, record)
         return state
 
     def preview(self, pid, version, commands, actor, reason):

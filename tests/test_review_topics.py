@@ -47,11 +47,11 @@ class TopicWorkflowTests(unittest.TestCase):
 
     def test_relevant_edit_reopens_and_preserves_previous_reason(self):
         self.close()
-        c=copy.deepcopy(self.p['state']['architecture']['components'][0]);c['name']='Yeni A'
+        c=copy.deepcopy(self.p['state']['architecture']['components'][0]);c['description']='Yeni teknik işlev'
         self.change('upsert_component','A',c)
         self.assertEqual(self.finding_topic()['status'],'reopened')
         self.assertIn('Gerekçeli',self.finding_topic()['decision']['note'])
-        self.change('set_topic_decision',self.finding_topic()['id'],{'status':'resolved'},'Yeni adı kontrol ettim')
+        self.change('set_topic_decision',self.finding_topic()['id'],{'status':'resolved'},'Yeni işlevi kontrol ettim')
         self.assertEqual(self.finding_topic()['status'],'completed')
 
     def test_waiting_persists_without_completing_topic(self):
@@ -126,9 +126,29 @@ class TopicWorkflowTests(unittest.TestCase):
         self.change('set_topic_decision',t1['id'],{'status':'merged','merged_into':t2['id']})
         self.assertEqual(self.finding_topic()['status'],'completed')
         with self.assertRaises(ValueError):self.change('set_topic_decision',t2['id'],{'status':'merged','merged_into':t1['id']})
-        f['title']='Düzeltilmiş konu'
+        f['description']='Yön hakkındaki yeni teknik bilgi'
         self.change('edit_finding','F2',f)
         self.assertEqual(self.finding_topic()['status'],'reopened')
+
+    def test_display_name_title_and_source_metadata_do_not_reopen(self):
+        self.close()
+        c=copy.deepcopy(self.p['state']['architecture']['components'][0]);c['name']='Yeni görüntüleme adı'
+        self.change('upsert_component','A',c)
+        f=copy.deepcopy(self.p['state']['analysis']['findings'][0]);f['title']='Daha okunaklı başlık'
+        self.change('edit_finding','F1',f)
+        s=self.p['state']['source_catalog'][0]
+        self.change('upsert_source','G-01',dict(requirement_id='G-01',text='  '+s['text']+'  ',section='Yeni bölüm',original_id='SYS-1'))
+        self.assertEqual(self.finding_topic()['status'],'completed')
+        self.assertNotIn('finding:F1',self.p['state']['stale_links'])
+
+    def test_technical_change_has_reason_and_reverting_restores_decision(self):
+        self.close()
+        edge=copy.deepcopy(self.p['state']['architecture']['connections'][0]);old=copy.deepcopy(edge)
+        edge['direction']='bidirectional'
+        self.change('upsert_connection','E1',edge)
+        self.assertIn('yönü',self.finding_topic()['decision']['stale_reason'])
+        self.change('upsert_connection','E1',old)
+        self.assertEqual(self.finding_topic()['status'],'completed')
 
 
 class RelationRulesTests(unittest.TestCase):
