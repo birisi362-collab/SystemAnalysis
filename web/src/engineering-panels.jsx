@@ -5,7 +5,7 @@ import { objectName } from "./review-labels.js";
 import "./engineering.css";
 
 export const assumptionStates = {
-  pending: "Bekliyor",
+  pending: "İnceleme bekliyor",
   accepted: "Kabul edildi",
   rejected: "Reddedildi",
   waiting: "Bilgi bekliyor",
@@ -133,6 +133,22 @@ export function ChangePreview({
                 ? "Kaldırılacak"
                 : "Düzenlenecek"}
           </span>
+          {c.kind === "assumption" && c.after && (
+            <p
+              className={
+                "notice " + (c.after.status === "pending" ? "amber" : "")
+              }
+            >
+              <b>Kaydedilecek karar: {assumptionStates[c.after.status]}</b>
+              {c.after.status === "pending" && (
+                <>
+                  {" "}
+                  · Bu işlem kabul/ret kararı içermez. Varsayım inceleme
+                  beklemeye devam eder.
+                </>
+              )}
+            </p>
+          )}
           {Object.entries(fields)
             .filter(
               ([key]) =>
@@ -202,6 +218,20 @@ export function ChangePreview({
             )}
             {c.action === "upsert_assumption" && (
               <>
+                <Field label="Mühendis kararı">
+                  <select
+                    value={c.value.status}
+                    onChange={(e) =>
+                      setValue(i, { ...c.value, status: e.target.value })
+                    }
+                  >
+                    {Object.entries(assumptionStates).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
                 <Field label="Varsayım">
                   <textarea
                     value={c.value.text}
@@ -509,14 +539,25 @@ export function AssumptionsPanel({ project, onCommands, onAssistant, busy }) {
           },
     });
   const set = (key, value) =>
-    setEdit({ ...edit, value: { ...edit.value, [key]: value } });
+    setEdit((current) => ({
+      ...current,
+      value: { ...current.value, [key]: value },
+    }));
   const command = () => ({
     action: "upsert_assumption",
     id: edit.id,
     value: edit.value,
   });
   const save = async () => {
-    if (await onCommands([command()], "Varsayım ve mühendis kararı", edit.base))
+    if (
+      await onCommands(
+        [command()],
+        edit.value.status === "pending"
+          ? "Varsayım düzenlemesi; karar verilmedi"
+          : "Varsayım kararı: " + assumptionStates[edit.value.status],
+        edit.base,
+      )
+    )
       setEdit(null);
   };
   return (
@@ -552,16 +593,29 @@ export function AssumptionsPanel({ project, onCommands, onAssistant, busy }) {
           </Field>
           <Field label="Mühendis kararı">
             <select
-              value={edit.value.status}
+              required
+              value={edit.value.status === "pending" ? "" : edit.value.status}
               onChange={(e) => set("status", e.target.value)}
             >
-              {Object.entries(assumptionStates).map(([v, t]) => (
-                <option key={v} value={v}>
-                  {t}
-                </option>
-              ))}
+              <option value="" disabled>
+                Karar seçin
+              </option>
+              {Object.entries(assumptionStates)
+                .filter(([v]) => v !== "pending")
+                .map(([v, t]) => (
+                  <option key={v} value={v}>
+                    {t}
+                  </option>
+                ))}
             </select>
           </Field>
+          {edit.value.status === "pending" && (
+            <p className="notice amber">
+              Henüz karar seçilmedi. İlgili öğeleri seçmek varsayımı kabul veya
+              ret etmez. Karar vermek için yukarıdan kabul, ret veya bilgi
+              bekliyor seçin.
+            </p>
+          )}
           <Field label="Karar gerekçesi">
             <textarea
               required={edit.value.status !== "pending"}
@@ -624,14 +678,35 @@ export function AssumptionsPanel({ project, onCommands, onAssistant, busy }) {
             <Button
               type="submit"
               className="primary"
-              disabled={busy || edit.base !== project.version}
+              disabled={
+                busy ||
+                edit.base !== project.version ||
+                edit.value.status === "pending"
+              }
             >
-              Kararı önizle
+              {edit.value.status === "accepted"
+                ? "Kabul kararını önizle"
+                : edit.value.status === "rejected"
+                  ? "Ret kararını önizle"
+                  : "Kararı önizle"}
             </Button>
+            {edit.value.status === "pending" && (
+              <Button
+                disabled={
+                  busy ||
+                  edit.base !== project.version ||
+                  !edit.value.text.trim()
+                }
+                onClick={save}
+              >
+                Düzenlemeyi önizle (karar vermeden)
+              </Button>
+            )}
             <Button
               disabled={
                 busy ||
                 edit.base !== project.version ||
+                edit.value.status === "pending" ||
                 !edit.value.text.trim() ||
                 (edit.value.status !== "pending" && !edit.value.note.trim())
               }

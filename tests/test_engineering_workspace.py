@@ -318,6 +318,29 @@ class EngineeringTests(unittest.TestCase):
         self.assertEqual(self.p['state']['architecture'],arch)
         self.assertEqual(self.p['state']['assumption_records'][0]['status'],'rejected')
 
+    def test_explicit_decision_survives_api_apply_restart_export_and_undo_redo(self):
+        for status in ('accepted','rejected'):
+            with self.subTest(status=status):
+                previous_status=self.p['state']['assumption_records'][0]['status']
+                record=deepcopy(self.p['state']['assumption_records'][0])
+                record.update(status=status,note='Açıkça seçilen mühendis kararı',connection_ids=['E1'])
+                response=self.client.post(self.url+'/preview',headers=self.headers,json=dict(
+                    version=self.p['version'],actor='Mühendis',reason='Kararı önizle',
+                    commands=[dict(action='upsert_assumption',id=record['id'],value=record)]))
+                self.assertEqual(response.status_code,200,response.text)
+                self.assertEqual(self.client.get(self.url).json()['state']['assumption_records'][0]['status'],previous_status)
+                response=self.client.post(self.url+'/changes',headers=self.headers,json=dict(
+                    version=self.p['version'],action='apply_change_set',value={'preview_id':response.json()['id']},actor='Mühendis',reason='Kararı uygula'))
+                self.assertEqual(response.status_code,200,response.text)
+                self.p=response.json()
+                self.assertEqual(self.p['state']['assumption_records'][0]['status'],status)
+                self.assertEqual(ReviewStore(self.store.path).get(self.p['id'])['state']['assumption_records'][0]['status'],status)
+                with zipfile.ZipFile(io.BytesIO(self.client.get(self.url+'/export').content)) as z:
+                    saved=json.loads(z.read('engineering_review.json'))
+                self.assertEqual(saved['state']['assumption_records'][0]['status'],status)
+                self.change('undo');self.assertEqual(self.p['state']['assumption_records'][0]['status'],previous_status)
+                self.change('redo');self.assertEqual(self.p['state']['assumption_records'][0]['status'],status)
+
     def test_assumption_and_related_design_change_are_one_current_decision(self):
         record=deepcopy(self.p['state']['assumption_records'][0]);record.update(status='accepted',note='İncelendi',connection_ids=['E1'])
         edge=deepcopy(self.p['state']['architecture']['connections'][0]);edge['direction']='bidirectional'
